@@ -73,6 +73,10 @@ std::vector<ShopItem> ShopManager::listItems(bool includeUnavailable) const {
 
 std::optional<ShopItem> ShopManager::findItem(int itemId) const {
     std::lock_guard<std::mutex> lock(m_mutex);
+    return findItemUnlocked(itemId);
+}
+
+std::optional<ShopItem> ShopManager::findItemUnlocked(int itemId) const {
     ensureInitialized();
     auto record = m_database->getShopItemById(itemId);
     if (!record.has_value()) {
@@ -95,7 +99,7 @@ ShopManager::PurchaseResult ShopManager::purchaseItem(int itemId, int quantity) 
         result.message = "请先登录后再购买";
         return result;
     }
-    auto itemOpt = findItem(itemId);
+    auto itemOpt = findItemUnlocked(itemId);
     if (!itemOpt.has_value()) {
         result.message = "商品不存在";
         return result;
@@ -158,7 +162,7 @@ bool ShopManager::useInventoryItem(int inventoryId, std::string* message) {
         }
         return false;
     }
-    auto itemOpt = findItem(entry.itemId());
+    auto itemOpt = findItemUnlocked(entry.itemId());
     if (!itemOpt.has_value()) {
         if (message != nullptr) {
             *message = "对应商品缺失";
@@ -359,7 +363,7 @@ void ShopManager::applyLuckyBagReward(const LuckyBagOutcome& outcome, const std:
         }
         case ShopItem::LuckyBagReward::RewardType::ShopItem: {
             if (outcome.reward.referenceItemId > 0) {
-                auto referenced = findItem(outcome.reward.referenceItemId);
+                auto referenced = findItemUnlocked(outcome.reward.referenceItemId);
                 if (referenced.has_value()) {
                     m_inventoryManager->createFromShopItem(*referenced, username, 1);
                 }

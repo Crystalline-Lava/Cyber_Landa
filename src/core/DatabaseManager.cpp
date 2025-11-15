@@ -97,6 +97,7 @@ void DatabaseManager::initialize(const std::string& databasePath) {
     openDatabase(databasePath);
     ensureUserTable();
     ensureTaskTable();
+    ensureAchievementTable();
     m_initialized = true;
 }
 
@@ -185,6 +186,34 @@ void DatabaseManager::ensureTaskTable() {
         "forgiveness_coupons INTEGER NOT NULL DEFAULT 0,"
         "progress_value INTEGER NOT NULL DEFAULT 0,"
         "progress_goal INTEGER NOT NULL DEFAULT 100");";
+    executeNonQuery(sql);
+}
+
+void DatabaseManager::ensureAchievementTable() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "CREATE TABLE IF NOT EXISTS achievements ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "owner TEXT NOT NULL,"
+        "creator TEXT NOT NULL,"
+        "name TEXT NOT NULL,"
+        "description TEXT NOT NULL,"
+        "icon_path TEXT NOT NULL,"
+        "display_color TEXT NOT NULL,"
+        "type TEXT NOT NULL,"
+        "reward_type TEXT NOT NULL,"
+        "progress_mode TEXT NOT NULL,"
+        "progress_value INTEGER NOT NULL DEFAULT 0,"
+        "progress_goal INTEGER NOT NULL DEFAULT 1,"
+        "reward_coins INTEGER NOT NULL DEFAULT 0,"
+        "reward_attributes TEXT NOT NULL DEFAULT '0,0,0,0,0,0',"
+        "reward_items TEXT NOT NULL DEFAULT '',"
+        "unlocked INTEGER NOT NULL DEFAULT 0,"
+        "completion_time TEXT,"
+        "conditions TEXT NOT NULL,"
+        "gallery_group TEXT NOT NULL DEFAULT 'default',"
+        "created_at TEXT NOT NULL,"
+        "special_metadata TEXT NOT NULL DEFAULT ''");";
     executeNonQuery(sql);
 }
 
@@ -417,6 +446,46 @@ int DatabaseManager::createTask(const TaskRecord& task) {
     return static_cast<int>(sqlite3_last_insert_rowid(m_db.get()));
 }
 
+int DatabaseManager::createAchievement(const AchievementRecord& record) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "INSERT INTO achievements (owner, creator, name, description, icon_path, display_color, type, "
+        "reward_type, progress_mode, progress_value, progress_goal, reward_coins, reward_attributes, "
+        "reward_items, unlocked, completion_time, conditions, gallery_group, created_at, special_metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, record.creator.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 3, record.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 4, record.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 5, record.iconPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 6, record.color.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 7, record.type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 8, record.rewardType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 9, record.progressMode.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 10, record.progressValue);
+    sqlite3_bind_int(stmt.get(), 11, record.progressGoal);
+    sqlite3_bind_int(stmt.get(), 12, record.rewardCoins);
+    sqlite3_bind_text(stmt.get(), 13, record.rewardAttributes.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 14, record.rewardItems.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 15, record.unlocked ? 1 : 0);
+    if (record.completionTime.empty()) {
+        sqlite3_bind_null(stmt.get(), 16);
+    } else {
+        sqlite3_bind_text(stmt.get(), 16, record.completionTime.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    sqlite3_bind_text(stmt.get(), 17, record.conditions.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 18, record.galleryGroup.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 19, record.createdAt.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 20, record.specialMetadata.c_str(), -1, SQLITE_TRANSIENT);
+
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to create achievement", m_db.get()));
+    }
+    return static_cast<int>(sqlite3_last_insert_rowid(m_db.get()));
+}
+
 /**
  * @brief 根据 TaskRecord 更新数据库行，保持内存缓存与磁盘一致。
  * 中文：所有字段一次性写回，保证教师强调的数据一致性。
@@ -450,6 +519,48 @@ bool DatabaseManager::updateTask(const TaskRecord& task) {
     return sqlite3_changes(m_db.get()) > 0;
 }
 
+bool DatabaseManager::updateAchievement(const AchievementRecord& record) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "UPDATE achievements SET owner = ?, creator = ?, name = ?, description = ?, icon_path = ?, "
+        "display_color = ?, type = ?, reward_type = ?, progress_mode = ?, progress_value = ?, "
+        "progress_goal = ?, reward_coins = ?, reward_attributes = ?, reward_items = ?, unlocked = ?, "
+        "completion_time = ?, conditions = ?, gallery_group = ?, created_at = ?, special_metadata = ? "
+        "WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, record.creator.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 3, record.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 4, record.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 5, record.iconPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 6, record.color.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 7, record.type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 8, record.rewardType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 9, record.progressMode.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 10, record.progressValue);
+    sqlite3_bind_int(stmt.get(), 11, record.progressGoal);
+    sqlite3_bind_int(stmt.get(), 12, record.rewardCoins);
+    sqlite3_bind_text(stmt.get(), 13, record.rewardAttributes.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 14, record.rewardItems.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 15, record.unlocked ? 1 : 0);
+    if (record.completionTime.empty()) {
+        sqlite3_bind_null(stmt.get(), 16);
+    } else {
+        sqlite3_bind_text(stmt.get(), 16, record.completionTime.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    sqlite3_bind_text(stmt.get(), 17, record.conditions.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 18, record.galleryGroup.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 19, record.createdAt.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 20, record.specialMetadata.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 21, record.id);
+
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to update achievement", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
 /**
  * @brief 根据任务 ID 删除记录。
  * 中文：提供统一删除入口，便于 TaskManager 在清理自定义任务时使用。
@@ -462,6 +573,18 @@ bool DatabaseManager::deleteTask(int taskId) {
     int rc = sqlite3_step(stmt.get());
     if (rc != SQLITE_DONE) {
         throw std::runtime_error(buildErrorMessage("Failed to delete task", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
+bool DatabaseManager::deleteAchievement(int achievementId) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql = "DELETE FROM achievements WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_int(stmt.get(), 1, achievementId);
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to delete achievement", m_db.get()));
     }
     return sqlite3_changes(m_db.get()) > 0;
 }
@@ -512,6 +635,47 @@ std::vector<DatabaseManager::TaskRecord> DatabaseManager::getAllTasks() const {
         throw std::runtime_error(buildErrorMessage("Failed to read task list", m_db.get()));
     }
     return records;
+}
+
+std::vector<DatabaseManager::AchievementRecord> DatabaseManager::getAchievementsForOwner(
+    const std::string& owner) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT id, owner, creator, name, description, icon_path, display_color, type, reward_type, "
+        "progress_mode, progress_value, progress_goal, reward_coins, reward_attributes, reward_items, "
+        "unlocked, completion_time, conditions, gallery_group, created_at, special_metadata "
+        "FROM achievements WHERE owner = ? ORDER BY id";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, owner.c_str(), -1, SQLITE_TRANSIENT);
+    std::vector<AchievementRecord> records;
+    while (true) {
+        int rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            records.push_back(readAchievementRecord(stmt.get()));
+            continue;
+        }
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+        throw std::runtime_error(buildErrorMessage("Failed to read achievements", m_db.get()));
+    }
+    return records;
+}
+
+int DatabaseManager::countCustomRewardAchievements(const std::string& owner,
+                                                   const std::string& monthToken) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT COUNT(1) FROM achievements WHERE owner = ? AND type = 'Custom' AND reward_type = 'WithReward' "
+        "AND strftime('%Y-%m', created_at) = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, monthToken.c_str(), -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to count achievements", m_db.get()));
+    }
+    return sqlite3_column_int(stmt.get(), 0);
 }
 
 /**
@@ -714,6 +878,34 @@ DatabaseManager::TaskRecord DatabaseManager::readTaskRecord(sqlite3_stmt* statem
     record.forgivenessCoupons = sqlite3_column_int(statement, 12);
     record.progressValue = sqlite3_column_int(statement, 13);
     record.progressGoal = sqlite3_column_int(statement, 14);
+    return record;
+}
+
+DatabaseManager::AchievementRecord DatabaseManager::readAchievementRecord(sqlite3_stmt* statement) const {
+    AchievementRecord record;
+    record.id = sqlite3_column_int(statement, 0);
+    record.owner = reinterpret_cast<const char*>(sqlite3_column_text(statement, 1));
+    record.creator = reinterpret_cast<const char*>(sqlite3_column_text(statement, 2));
+    record.name = reinterpret_cast<const char*>(sqlite3_column_text(statement, 3));
+    record.description = reinterpret_cast<const char*>(sqlite3_column_text(statement, 4));
+    record.iconPath = reinterpret_cast<const char*>(sqlite3_column_text(statement, 5));
+    record.color = reinterpret_cast<const char*>(sqlite3_column_text(statement, 6));
+    record.type = reinterpret_cast<const char*>(sqlite3_column_text(statement, 7));
+    record.rewardType = reinterpret_cast<const char*>(sqlite3_column_text(statement, 8));
+    record.progressMode = reinterpret_cast<const char*>(sqlite3_column_text(statement, 9));
+    record.progressValue = sqlite3_column_int(statement, 10);
+    record.progressGoal = sqlite3_column_int(statement, 11);
+    record.rewardCoins = sqlite3_column_int(statement, 12);
+    record.rewardAttributes = reinterpret_cast<const char*>(sqlite3_column_text(statement, 13));
+    record.rewardItems = reinterpret_cast<const char*>(sqlite3_column_text(statement, 14));
+    record.unlocked = sqlite3_column_int(statement, 15) != 0;
+    if (sqlite3_column_type(statement, 16) != SQLITE_NULL) {
+        record.completionTime = reinterpret_cast<const char*>(sqlite3_column_text(statement, 16));
+    }
+    record.conditions = reinterpret_cast<const char*>(sqlite3_column_text(statement, 17));
+    record.galleryGroup = reinterpret_cast<const char*>(sqlite3_column_text(statement, 18));
+    record.createdAt = reinterpret_cast<const char*>(sqlite3_column_text(statement, 19));
+    record.specialMetadata = reinterpret_cast<const char*>(sqlite3_column_text(statement, 20));
     return record;
 }
 

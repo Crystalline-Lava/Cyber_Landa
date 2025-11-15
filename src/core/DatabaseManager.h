@@ -110,6 +110,30 @@ public:
         int progressGoal = 100;         //!< 进度目标。
     };
 
+    struct AchievementRecord {
+        int id = -1;
+        std::string owner;
+        std::string creator;
+        std::string name;
+        std::string description;
+        std::string iconPath;
+        std::string color;
+        std::string type;
+        std::string rewardType;
+        std::string progressMode;
+        int progressValue = 0;
+        int progressGoal = 1;
+        int rewardCoins = 0;
+        std::string rewardAttributes;
+        std::string rewardItems;
+        bool unlocked = false;
+        std::string completionTime;
+        std::string conditions;
+        std::string galleryGroup;
+        std::string createdAt;
+        std::string specialMetadata;
+    };
+
     /**
      * @brief Insert a new user and return row id.
      * 中文：插入新用户并返回行号。
@@ -179,9 +203,19 @@ public:
     void ensureTaskTable();
 
     /**
+     * @brief 确保成就表存在，覆盖成就、进度与画廊信息。
+     */
+    void ensureAchievementTable();
+
+    /**
      * @brief 新建任务记录并返回行号。
      */
     int createTask(const TaskRecord& task);
+
+    /**
+     * @brief 新建成就记录（系统或自定义）。
+     */
+    int createAchievement(const AchievementRecord& record);
 
     /**
      * @brief 更新任务记录。
@@ -189,9 +223,19 @@ public:
     bool updateTask(const TaskRecord& task);
 
     /**
+     * @brief 更新成就记录。
+     */
+    bool updateAchievement(const AchievementRecord& record);
+
+    /**
      * @brief 根据 ID 删除任务。
      */
     bool deleteTask(int taskId);
+
+    /**
+     * @brief 根据 ID 删除成就。
+     */
+    bool deleteAchievement(int achievementId);
 
     /**
      * @brief 根据 ID 查询任务。
@@ -199,9 +243,20 @@ public:
     [[nodiscard]] std::optional<TaskRecord> getTaskById(int taskId) const;
 
     /**
+     * @brief 查询指定月份内学生创建的奖励型自定义成就数量。
+     */
+    [[nodiscard]] int countCustomRewardAchievements(const std::string& owner,
+                                                    const std::string& monthToken) const;
+
+    /**
      * @brief 获取所有任务记录，用于初始化内存缓存。
      */
     [[nodiscard]] std::vector<TaskRecord> getAllTasks() const;
+
+    /**
+     * @brief 根据学生用户名获取其全部成就记录。
+     */
+    [[nodiscard]] std::vector<AchievementRecord> getAchievementsForOwner(const std::string& owner) const;
 
     /**
      * @brief Begin explicit transaction.
@@ -257,6 +312,7 @@ private:
     [[nodiscard]] StatementHandle prepareStatement(const std::string& sql) const;
     [[nodiscard]] static bool isSuccessCode(int sqliteResult);
     [[nodiscard]] TaskRecord readTaskRecord(sqlite3_stmt* statement) const;
+    [[nodiscard]] AchievementRecord readAchievementRecord(sqlite3_stmt* statement) const;
 
     DatabaseHandle m_db;
     std::string m_databasePath;

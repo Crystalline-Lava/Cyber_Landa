@@ -26,7 +26,8 @@ constexpr const char* kAttributeSpentKey = "attribute_spent";
  * 中文：构造函数仅保存 DatabaseManager 引用，实现依赖注入。
  * 说明：Manager 本身不拥有数据库，遵循 RAII，避免重复关闭句柄。
  */
-UserManager::UserManager(DatabaseManager& database) : m_database(database) {}
+UserManager::UserManager(DatabaseManager& database)
+    : m_database(database), m_activeUser(), m_signalProxy(std::make_unique<SignalProxy>()) {}
 
 /**
  * @brief Validate credentials and populate in-memory session.
@@ -92,6 +93,9 @@ void UserManager::applyTaskCompletion(int growthGain,
                                       const User::AttributeSet& attributeBonus,
                                       User::TaskCategory category) {
     User& user = activeUser();
+    const int previousLevel = user.level();
+    const int previousCoins = user.coins();
+    const int previousPride = user.attributes().pride;
     if (growthGain > 0) {
         user.addGrowthPoints(growthGain);
     }
@@ -101,6 +105,17 @@ void UserManager::applyTaskCompletion(int growthGain,
     user.applyAttributeBonus(attributeBonus);
     user.recordTaskCompletion(category);
     persistUser(user);
+    if (m_signalProxy) {
+        if (user.level() != previousLevel) {
+            emit m_signalProxy->levelChanged(user.level());
+        }
+        if (user.coins() != previousCoins) {
+            emit m_signalProxy->coinsChanged(user.coins());
+        }
+        if (user.attributes().pride != previousPride) {
+            emit m_signalProxy->prideChanged(user.attributes().pride);
+        }
+    }
 }
 
 /**
@@ -119,8 +134,12 @@ void UserManager::unlockAchievement() {
  */
 void UserManager::distributeAttributePoints(const User::AttributeSet& distribution) {
     User& user = activeUser();
+    const int previousPride = user.attributes().pride;
     user.distributeAttributes(distribution);
     persistUser(user);
+    if (m_signalProxy && user.attributes().pride != previousPride) {
+        emit m_signalProxy->prideChanged(user.attributes().pride);
+    }
 }
 
 /**
@@ -138,6 +157,8 @@ void UserManager::refreshFromDatabase() {
     }
     m_activeUser = hydrateUser(*record);
 }
+
+UserManager::SignalProxy* UserManager::signalProxy() const noexcept { return m_signalProxy.get(); }
 
 /**
  * @brief Convert DatabaseManager::UserRecord -> domain object with attributes/stats.

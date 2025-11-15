@@ -285,7 +285,21 @@ void InventoryManager::cleanupExpiredEffectsLocked(const std::string& username) 
     }
 }
 
-void InventoryManager::cleanupAllEffectsLocked() const { m_effects.clear(); }
+void InventoryManager::cleanupAllEffectsLocked() const {
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (auto it = m_effects.begin(); it != m_effects.end();) {
+        auto& bucket = it->second;
+        bucket.erase(std::remove_if(bucket.begin(),
+                                    bucket.end(),
+                                    [&now](const ActiveEffect& effect) { return effect.expiresAt <= now; }),
+                     bucket.end());
+        if (bucket.empty()) {
+            it = m_effects.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
 
 void InventoryManager::registerEffectLocked(const std::string& username,
                                             ShopItem::PropEffectType type,

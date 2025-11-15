@@ -50,6 +50,7 @@ private:
     ShopManager();
 
     void ensureInitialized() const;
+    std::optional<ShopItem> findItemUnlocked(int itemId) const;
     ShopItem applyPricingStrategy(const ShopItem& item) const;
     bool validatePurchase(const ShopItem& item, const User& user, int quantity, std::string& reason) const;
 

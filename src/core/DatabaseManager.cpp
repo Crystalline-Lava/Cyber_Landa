@@ -35,11 +35,16 @@ std::string buildErrorMessage(const std::string& prefix, sqlite3* handle) {
  * Business logic: delaying actual IO operations avoids unnecessary disk access during program start.
  * 中文：推迟实际 IO 操作可减少程序启动期间的磁盘访问，提高响应速度。
  *
- * @return void. 中文：无返回值。
+ * @return true 当创建了最外层事务。中文：若当前调用成为最外层事务则返回 true。
  * @throws None. 中文：不抛出异常。
  */
 DatabaseManager::DatabaseManager()
-    : m_db(nullptr, &sqlite3_close), m_databasePath(), m_mutex(), m_initialized(false) {}
+    : m_db(nullptr, &sqlite3_close),
+      m_databasePath(),
+      m_mutex(),
+      m_initialized(false),
+      m_transactionDepth(0),
+      m_transactionLock() {}
 
 /**
  * @brief Destructor closes the connection automatically thanks to std::unique_ptr.
@@ -519,7 +524,16 @@ std::vector<DatabaseManager::TaskRecord> DatabaseManager::getAllTasks() const {
  * @return void. 中文：无返回值。
  * @throws std::runtime_error When SQLite cannot start the transaction. 中文：开启事务失败抛出异常。
  */
-void DatabaseManager::beginTransaction() { executeNonQuery("BEGIN TRANSACTION;"); }
+bool DatabaseManager::beginTransaction() {
+    if (!m_transactionLock.owns_lock()) {
+        m_transactionLock = std::unique_lock<std::recursive_mutex>(m_mutex);
+        executeNonQuery("BEGIN TRANSACTION;");
+        m_transactionDepth = 1;
+        return true;
+    }
+    ++m_transactionDepth;
+    return false;
+}
 
 /**
  * @brief Commit the active transaction.
@@ -531,7 +545,21 @@ void DatabaseManager::beginTransaction() { executeNonQuery("BEGIN TRANSACTION;")
  * @return void. 中文：无返回值。
  * @throws std::runtime_error When commit fails. 中文：提交失败抛出异常。
  */
-void DatabaseManager::commitTransaction() { executeNonQuery("COMMIT;"); }
+void DatabaseManager::commitTransaction() {
+    if (!m_transactionLock.owns_lock()) {
+        throw std::runtime_error("No active transaction to commit");
+    }
+    if (m_transactionDepth == 0) {
+        throw std::runtime_error("Transaction depth mismatch on commit");
+    }
+    if (m_transactionDepth == 1) {
+        executeNonQuery("COMMIT;");
+        m_transactionDepth = 0;
+        m_transactionLock.unlock();
+        return;
+    }
+    --m_transactionDepth;
+}
 
 /**
  * @brief Roll back the active transaction, undoing uncommitted changes.
@@ -543,7 +571,14 @@ void DatabaseManager::commitTransaction() { executeNonQuery("COMMIT;"); }
  * @return void. 中文：无返回值。
  * @throws std::runtime_error When rollback fails. 中文：回滚失败抛出异常。
  */
-void DatabaseManager::rollbackTransaction() { executeNonQuery("ROLLBACK;"); }
+void DatabaseManager::rollbackTransaction() {
+    if (!m_transactionLock.owns_lock()) {
+        return;  // 中文：若当前没有事务则无需处理，防止双重回滚导致崩溃。
+    }
+    executeNonQuery("ROLLBACK;");
+    m_transactionDepth = 0;
+    m_transactionLock.unlock();
+}
 
 /**
  * @brief Expose raw sqlite3 handle for rare advanced scenarios (e.g., analytics queries).

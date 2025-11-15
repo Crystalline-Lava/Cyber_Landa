@@ -1,6 +1,7 @@
 #ifndef DATABASEMANAGER_H
 #define DATABASEMANAGER_H
 
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -206,10 +207,10 @@ public:
      * @brief Begin explicit transaction.
      * 中文：开启显式事务。
      *
-     * @return void. 中文：无返回值。
+     * @return true 当本次调用启动了新的顶层事务。中文：若当前调用创建了新的最外层事务则返回 true。
      * @throws std::runtime_error On begin failure. 中文：开启事务失败抛出异常。
      */
-    void beginTransaction();
+    bool beginTransaction();
 
     /**
      * @brief Commit current transaction.
@@ -261,6 +262,8 @@ private:
     std::string m_databasePath;
     mutable std::recursive_mutex m_mutex;
     bool m_initialized;
+    std::size_t m_transactionDepth;
+    std::unique_lock<std::recursive_mutex> m_transactionLock;
 
     inline static const char* kPreconfiguredUsername = "x";
     inline static const char* kPreconfiguredPassword = "1";

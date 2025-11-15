@@ -351,8 +351,7 @@ void TaskManager::resetTasksByPredicate(Task::TaskType type) {
 void TaskManager::applyRewardsLocked(Task& task) {
     bool transactionStarted = false;
     try {
-        m_database.beginTransaction();
-        transactionStarted = true;
+        transactionStarted = m_database.beginTransaction();
 
         const double rewardFactor = difficultyFactor(task) * streakFactor(task);
         const int finalCoins = std::max(0, static_cast<int>(std::round(task.coinReward() * rewardFactor)));

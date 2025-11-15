@@ -72,6 +72,9 @@ private:
     bool recalculateProgress(Achievement& achievement);
     void evaluateCompletion(Achievement& achievement);
     void grantRewards(Achievement& achievement);
+    void handleUserLevelChangedLocked(int newLevel);
+    void handlePrideChangedLocked(int newPride);
+    void handleCoinsChangedLocked(int newCoins);
     bool validateCustomAchievement(const Achievement& achievement) const;
     void rebuildGalleryIndex();
     void updateGalleryForAchievement(const Achievement& achievement);

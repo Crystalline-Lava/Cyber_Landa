@@ -361,7 +361,10 @@ bool DatabaseManager::deleteUser(const std::string& username) {
  * @return void. 中文：无返回值。
  * @throws std::runtime_error When SQLite cannot start the transaction. 中文：开启事务失败抛出异常。
  */
-void DatabaseManager::beginTransaction() { executeNonQuery("BEGIN TRANSACTION;"); }
+void DatabaseManager::beginTransaction() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    executeNonQuery("BEGIN TRANSACTION;");
+}
 
 /**
  * @brief Commit the active transaction.
@@ -373,7 +376,10 @@ void DatabaseManager::beginTransaction() { executeNonQuery("BEGIN TRANSACTION;")
  * @return void. 中文：无返回值。
  * @throws std::runtime_error When commit fails. 中文：提交失败抛出异常。
  */
-void DatabaseManager::commitTransaction() { executeNonQuery("COMMIT;"); }
+void DatabaseManager::commitTransaction() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    executeNonQuery("COMMIT;");
+}
 
 /**
  * @brief Roll back the active transaction, undoing uncommitted changes.
@@ -385,7 +391,10 @@ void DatabaseManager::commitTransaction() { executeNonQuery("COMMIT;"); }
  * @return void. 中文：无返回值。
  * @throws std::runtime_error When rollback fails. 中文：回滚失败抛出异常。
  */
-void DatabaseManager::rollbackTransaction() { executeNonQuery("ROLLBACK;"); }
+void DatabaseManager::rollbackTransaction() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    executeNonQuery("ROLLBACK;");
+}
 
 /**
  * @brief Expose raw sqlite3 handle for rare advanced scenarios (e.g., analytics queries).

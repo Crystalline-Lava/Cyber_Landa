@@ -303,14 +303,13 @@ void AchievementManager::onTaskProgressed(int /*taskId*/, int currentValue, int 
     if (goalValue <= 0) {
         return;
     }
-    const double ratio = static_cast<double>(currentValue) / static_cast<double>(goalValue);
-    const int delta = static_cast<int>(std::ceil(ratio));
+    const int clampedProgress = std::clamp(currentValue, 0, goalValue);
     std::lock_guard<std::mutex> lock(m_mutex);
     for (auto& [id, achievement] : m_achievements) {
-        updateConditionCache(achievement,
-                             Achievement::Condition::ConditionType::CustomCounter,
-                             delta,
-                             "task_progress");
+        replaceConditionValue(achievement,
+                              Achievement::Condition::ConditionType::CustomCounter,
+                              clampedProgress,
+                              "task_progress");
         if (recalculateProgress(achievement)) {
             m_database.updateAchievement(toRecord(achievement));
             emit achievementProgressChanged(id, achievement.progressValue(), achievement.progressGoal());
@@ -321,6 +320,25 @@ void AchievementManager::onTaskProgressed(int /*taskId*/, int currentValue, int 
 
 void AchievementManager::onUserLevelChanged(int newLevel) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    handleUserLevelChangedLocked(newLevel);
+}
+
+void AchievementManager::onPrideChanged(int newPride) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    handlePrideChangedLocked(newPride);
+}
+
+void AchievementManager::onCoinsChanged(int newCoins) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    handleCoinsChangedLocked(newCoins);
+}
+
+/**
+ * @brief 复用的等级变更处理函数，假设调用方已持有 m_mutex。
+ * 中文：避免重复加锁导致死锁，因此所有触发等级条件更新的入口（事件回调、奖励发放）
+ *       都调用本方法，在同一把锁下完成条件刷新与解锁判定。
+ */
+void AchievementManager::handleUserLevelChangedLocked(int newLevel) {
     for (auto& [id, achievement] : m_achievements) {
         replaceConditionValue(achievement,
                               Achievement::Condition::ConditionType::ReachLevel,
@@ -334,8 +352,10 @@ void AchievementManager::onUserLevelChanged(int newLevel) {
     }
 }
 
-void AchievementManager::onPrideChanged(int newPride) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+/**
+ * @brief 自豪感变更的共享处理逻辑，调用时需确保互斥锁已锁定。
+ */
+void AchievementManager::handlePrideChangedLocked(int newPride) {
     for (auto& [id, achievement] : m_achievements) {
         replaceConditionValue(achievement,
                               Achievement::Condition::ConditionType::ReachPride,
@@ -349,8 +369,10 @@ void AchievementManager::onPrideChanged(int newPride) {
     }
 }
 
-void AchievementManager::onCoinsChanged(int newCoins) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+/**
+ * @brief 兰州币余额变动的共享处理逻辑，调用前同样需要持有互斥锁。
+ */
+void AchievementManager::handleCoinsChangedLocked(int newCoins) {
     for (auto& [id, achievement] : m_achievements) {
         replaceConditionValue(achievement,
                               Achievement::Condition::ConditionType::ReachCoins,
@@ -587,13 +609,13 @@ void AchievementManager::grantRewards(Achievement& achievement) {
     user.applyAttributeBonus(achievement.rewardAttributes());
     m_userManager.unlockAchievement();
     if (beforeLevel != user.level()) {
-        onUserLevelChanged(user.level());
+        handleUserLevelChangedLocked(user.level());
     }
     if (previousPride != user.attributes().pride) {
-        onPrideChanged(user.attributes().pride);
+        handlePrideChangedLocked(user.attributes().pride);
     }
     if (user.coins() != previousCoins) {
-        onCoinsChanged(user.coins());
+        handleCoinsChangedLocked(user.coins());
     }
 }
 

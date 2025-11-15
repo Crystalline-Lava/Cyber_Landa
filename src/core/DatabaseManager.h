@@ -1,10 +1,12 @@
 #ifndef DATABASEMANAGER_H
 #define DATABASEMANAGER_H
 
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <sqlite3.h>
 
@@ -87,6 +89,28 @@ public:
     };
 
     /**
+     * @struct TaskRecord
+     * @brief 用于描述 tasks 表中的一条任务记录，方便 TaskManager 进行序列化与反序列化。
+     */
+    struct TaskRecord {
+        int id = -1;                    //!< 主键 ID。
+        std::string name;               //!< 任务名称。
+        std::string description;        //!< 任务描述。
+        std::string type;               //!< 任务类型（Daily/Weekly/Semester/Custom）。
+        int difficulty = 1;             //!< 难度星级。
+        std::string deadlineIso;        //!< 截止时间，ISO8601 字符串。
+        bool completed = false;         //!< 完成状态。
+        int coinReward = 0;             //!< 基础兰州币奖励。
+        int growthReward = 0;           //!< 成长值奖励。
+        std::string attributeReward;    //!< 属性奖励序列化结果。
+        int bonusStreak = 0;            //!< 连续完成次数。
+        std::string customSettings;     //!< 自定义配置（JSON 或键值对）。
+        int forgivenessCoupons = 0;     //!< 宽恕券数量，用于处理失败。
+        int progressValue = 0;          //!< 当前进度。
+        int progressGoal = 100;         //!< 进度目标。
+    };
+
+    /**
      * @brief Insert a new user and return row id.
      * 中文：插入新用户并返回行号。
      *
@@ -150,13 +174,43 @@ public:
     bool deleteUser(const std::string& username);
 
     /**
+     * @brief 确保任务表存在，若不存在则创建。
+     */
+    void ensureTaskTable();
+
+    /**
+     * @brief 新建任务记录并返回行号。
+     */
+    int createTask(const TaskRecord& task);
+
+    /**
+     * @brief 更新任务记录。
+     */
+    bool updateTask(const TaskRecord& task);
+
+    /**
+     * @brief 根据 ID 删除任务。
+     */
+    bool deleteTask(int taskId);
+
+    /**
+     * @brief 根据 ID 查询任务。
+     */
+    [[nodiscard]] std::optional<TaskRecord> getTaskById(int taskId) const;
+
+    /**
+     * @brief 获取所有任务记录，用于初始化内存缓存。
+     */
+    [[nodiscard]] std::vector<TaskRecord> getAllTasks() const;
+
+    /**
      * @brief Begin explicit transaction.
      * 中文：开启显式事务。
      *
-     * @return void. 中文：无返回值。
+     * @return true 当本次调用启动了新的顶层事务。中文：若当前调用创建了新的最外层事务则返回 true。
      * @throws std::runtime_error On begin failure. 中文：开启事务失败抛出异常。
      */
-    void beginTransaction();
+    bool beginTransaction();
 
     /**
      * @brief Commit current transaction.
@@ -202,11 +256,14 @@ private:
     void executeNonQuery(const std::string& sql);
     [[nodiscard]] StatementHandle prepareStatement(const std::string& sql) const;
     [[nodiscard]] static bool isSuccessCode(int sqliteResult);
+    [[nodiscard]] TaskRecord readTaskRecord(sqlite3_stmt* statement) const;
 
     DatabaseHandle m_db;
     std::string m_databasePath;
     mutable std::recursive_mutex m_mutex;
     bool m_initialized;
+    std::size_t m_transactionDepth;
+    std::unique_lock<std::recursive_mutex> m_transactionLock;
 
     inline static const char* kPreconfiguredUsername = "x";
     inline static const char* kPreconfiguredPassword = "1";

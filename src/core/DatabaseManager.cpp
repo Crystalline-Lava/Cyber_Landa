@@ -35,11 +35,16 @@ std::string buildErrorMessage(const std::string& prefix, sqlite3* handle) {
  * Business logic: delaying actual IO operations avoids unnecessary disk access during program start.
  * 中文：推迟实际 IO 操作可减少程序启动期间的磁盘访问，提高响应速度。
  *
- * @return void. 中文：无返回值。
+ * @return true 当创建了最外层事务。中文：若当前调用成为最外层事务则返回 true。
  * @throws None. 中文：不抛出异常。
  */
 DatabaseManager::DatabaseManager()
-    : m_db(nullptr, &sqlite3_close), m_databasePath(), m_mutex(), m_initialized(false) {}
+    : m_db(nullptr, &sqlite3_close),
+      m_databasePath(),
+      m_mutex(),
+      m_initialized(false),
+      m_transactionDepth(0),
+      m_transactionLock() {}
 
 /**
  * @brief Destructor closes the connection automatically thanks to std::unique_ptr.
@@ -91,6 +96,7 @@ void DatabaseManager::initialize(const std::string& databasePath) {
     closeDatabase();
     openDatabase(databasePath);
     ensureUserTable();
+    ensureTaskTable();
     m_initialized = true;
 }
 
@@ -153,6 +159,33 @@ void DatabaseManager::ensureUserTable() {
             throw std::runtime_error(buildErrorMessage("Failed to insert default account", m_db.get()));
         }
     }
+}
+
+/**
+ * @brief 确保任务表存在，集中管理任务系统的持久化结构。
+ * 中文：任务表字段涵盖任务类型、难度星级、截止时间、奖励、连胜、宽恕券、进度等信息，
+ *       通过集中建表既能满足教师“奖励与难度平衡”的讲解需要，也方便 TaskManager 事务化操作。
+ */
+void DatabaseManager::ensureTaskTable() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "CREATE TABLE IF NOT EXISTS tasks ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "name TEXT NOT NULL,"
+        "description TEXT NOT NULL,"
+        "type TEXT NOT NULL,"
+        "difficulty INTEGER NOT NULL,"
+        "deadline TEXT NOT NULL,"
+        "completed INTEGER NOT NULL DEFAULT 0,"
+        "coin_reward INTEGER NOT NULL DEFAULT 0,"
+        "growth_reward INTEGER NOT NULL DEFAULT 0,"
+        "attribute_reward TEXT NOT NULL DEFAULT '{}',"
+        "bonus_streak INTEGER NOT NULL DEFAULT 0,"
+        "custom_settings TEXT NOT NULL DEFAULT '{}',"
+        "forgiveness_coupons INTEGER NOT NULL DEFAULT 0,"
+        "progress_value INTEGER NOT NULL DEFAULT 0,"
+        "progress_goal INTEGER NOT NULL DEFAULT 100");";
+    executeNonQuery(sql);
 }
 
 /**
@@ -352,6 +385,136 @@ bool DatabaseManager::deleteUser(const std::string& username) {
 }
 
 /**
+ * @brief 将 TaskRecord 插入数据库并返回行号。
+ * 中文：任务创建流程统一走此接口，便于在 UI 中调用后得到主键用于后续编辑。
+ */
+int DatabaseManager::createTask(const TaskRecord& task) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "INSERT INTO tasks (name, description, type, difficulty, deadline, completed, coin_reward, "
+        "growth_reward, attribute_reward, bonus_streak, custom_settings, forgiveness_coupons, "
+        "progress_value, progress_goal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, task.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, task.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 3, task.type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 4, task.difficulty);
+    sqlite3_bind_text(stmt.get(), 5, task.deadlineIso.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 6, task.completed ? 1 : 0);
+    sqlite3_bind_int(stmt.get(), 7, task.coinReward);
+    sqlite3_bind_int(stmt.get(), 8, task.growthReward);
+    sqlite3_bind_text(stmt.get(), 9, task.attributeReward.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 10, task.bonusStreak);
+    sqlite3_bind_text(stmt.get(), 11, task.customSettings.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 12, task.forgivenessCoupons);
+    sqlite3_bind_int(stmt.get(), 13, task.progressValue);
+    sqlite3_bind_int(stmt.get(), 14, task.progressGoal);
+
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to insert task", m_db.get()));
+    }
+    return static_cast<int>(sqlite3_last_insert_rowid(m_db.get()));
+}
+
+/**
+ * @brief 根据 TaskRecord 更新数据库行，保持内存缓存与磁盘一致。
+ * 中文：所有字段一次性写回，保证教师强调的数据一致性。
+ */
+bool DatabaseManager::updateTask(const TaskRecord& task) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "UPDATE tasks SET name = ?, description = ?, type = ?, difficulty = ?, deadline = ?, completed = ?, "
+        "coin_reward = ?, growth_reward = ?, attribute_reward = ?, bonus_streak = ?, custom_settings = ?, "
+        "forgiveness_coupons = ?, progress_value = ?, progress_goal = ? WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, task.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, task.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 3, task.type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 4, task.difficulty);
+    sqlite3_bind_text(stmt.get(), 5, task.deadlineIso.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 6, task.completed ? 1 : 0);
+    sqlite3_bind_int(stmt.get(), 7, task.coinReward);
+    sqlite3_bind_int(stmt.get(), 8, task.growthReward);
+    sqlite3_bind_text(stmt.get(), 9, task.attributeReward.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 10, task.bonusStreak);
+    sqlite3_bind_text(stmt.get(), 11, task.customSettings.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 12, task.forgivenessCoupons);
+    sqlite3_bind_int(stmt.get(), 13, task.progressValue);
+    sqlite3_bind_int(stmt.get(), 14, task.progressGoal);
+    sqlite3_bind_int(stmt.get(), 15, task.id);
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to update task", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
+/**
+ * @brief 根据任务 ID 删除记录。
+ * 中文：提供统一删除入口，便于 TaskManager 在清理自定义任务时使用。
+ */
+bool DatabaseManager::deleteTask(int taskId) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql = "DELETE FROM tasks WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_int(stmt.get(), 1, taskId);
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to delete task", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
+/**
+ * @brief 根据主键查询任务。
+ * 中文：配合 TaskManager::taskById 进行按需加载。
+ */
+std::optional<DatabaseManager::TaskRecord> DatabaseManager::getTaskById(int taskId) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT id, name, description, type, difficulty, deadline, completed, coin_reward, growth_reward, "
+        "attribute_reward, bonus_streak, custom_settings, forgiveness_coupons, progress_value, progress_goal "
+        "FROM tasks WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_int(stmt.get(), 1, taskId);
+    int rc = sqlite3_step(stmt.get());
+    if (rc == SQLITE_ROW) {
+        return readTaskRecord(stmt.get());
+    }
+    if (rc == SQLITE_DONE) {
+        return std::nullopt;
+    }
+    throw std::runtime_error(buildErrorMessage("Failed to query task", m_db.get()));
+}
+
+/**
+ * @brief 获取全部任务记录，供启动阶段初始化缓存。
+ * 中文：一次性读取能减少频繁往返数据库，提高 UI 响应速度。
+ */
+std::vector<DatabaseManager::TaskRecord> DatabaseManager::getAllTasks() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT id, name, description, type, difficulty, deadline, completed, coin_reward, growth_reward, "
+        "attribute_reward, bonus_streak, custom_settings, forgiveness_coupons, progress_value, progress_goal "
+        "FROM tasks";
+    auto stmt = prepareStatement(sql);
+    std::vector<TaskRecord> records;
+    while (true) {
+        int rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            records.push_back(readTaskRecord(stmt.get()));
+            continue;
+        }
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+        throw std::runtime_error(buildErrorMessage("Failed to read task list", m_db.get()));
+    }
+    return records;
+}
+
+/**
  * @brief Begin an explicit transaction to guard multiple operations.
  * 中文：开启显式事务以保护多条操作的原子性。
  *
@@ -361,7 +524,16 @@ bool DatabaseManager::deleteUser(const std::string& username) {
  * @return void. 中文：无返回值。
  * @throws std::runtime_error When SQLite cannot start the transaction. 中文：开启事务失败抛出异常。
  */
-void DatabaseManager::beginTransaction() { executeNonQuery("BEGIN TRANSACTION;"); }
+bool DatabaseManager::beginTransaction() {
+    if (!m_transactionLock.owns_lock()) {
+        m_transactionLock = std::unique_lock<std::recursive_mutex>(m_mutex);
+        executeNonQuery("BEGIN TRANSACTION;");
+        m_transactionDepth = 1;
+        return true;
+    }
+    ++m_transactionDepth;
+    return false;
+}
 
 /**
  * @brief Commit the active transaction.
@@ -373,7 +545,21 @@ void DatabaseManager::beginTransaction() { executeNonQuery("BEGIN TRANSACTION;")
  * @return void. 中文：无返回值。
  * @throws std::runtime_error When commit fails. 中文：提交失败抛出异常。
  */
-void DatabaseManager::commitTransaction() { executeNonQuery("COMMIT;"); }
+void DatabaseManager::commitTransaction() {
+    if (!m_transactionLock.owns_lock()) {
+        throw std::runtime_error("No active transaction to commit");
+    }
+    if (m_transactionDepth == 0) {
+        throw std::runtime_error("Transaction depth mismatch on commit");
+    }
+    if (m_transactionDepth == 1) {
+        executeNonQuery("COMMIT;");
+        m_transactionDepth = 0;
+        m_transactionLock.unlock();
+        return;
+    }
+    --m_transactionDepth;
+}
 
 /**
  * @brief Roll back the active transaction, undoing uncommitted changes.
@@ -385,7 +571,14 @@ void DatabaseManager::commitTransaction() { executeNonQuery("COMMIT;"); }
  * @return void. 中文：无返回值。
  * @throws std::runtime_error When rollback fails. 中文：回滚失败抛出异常。
  */
-void DatabaseManager::rollbackTransaction() { executeNonQuery("ROLLBACK;"); }
+void DatabaseManager::rollbackTransaction() {
+    if (!m_transactionLock.owns_lock()) {
+        return;  // 中文：若当前没有事务则无需处理，防止双重回滚导致崩溃。
+    }
+    executeNonQuery("ROLLBACK;");
+    m_transactionDepth = 0;
+    m_transactionLock.unlock();
+}
 
 /**
  * @brief Expose raw sqlite3 handle for rare advanced scenarios (e.g., analytics queries).
@@ -502,6 +695,26 @@ DatabaseManager::StatementHandle DatabaseManager::prepareStatement(const std::st
  */
 bool DatabaseManager::isSuccessCode(int sqliteResult) {
     return sqliteResult == SQLITE_DONE || sqliteResult == SQLITE_ROW || sqliteResult == SQLITE_OK;
+}
+
+DatabaseManager::TaskRecord DatabaseManager::readTaskRecord(sqlite3_stmt* statement) const {
+    TaskRecord record;
+    record.id = sqlite3_column_int(statement, 0);
+    record.name = reinterpret_cast<const char*>(sqlite3_column_text(statement, 1));
+    record.description = reinterpret_cast<const char*>(sqlite3_column_text(statement, 2));
+    record.type = reinterpret_cast<const char*>(sqlite3_column_text(statement, 3));
+    record.difficulty = sqlite3_column_int(statement, 4);
+    record.deadlineIso = reinterpret_cast<const char*>(sqlite3_column_text(statement, 5));
+    record.completed = sqlite3_column_int(statement, 6) != 0;
+    record.coinReward = sqlite3_column_int(statement, 7);
+    record.growthReward = sqlite3_column_int(statement, 8);
+    record.attributeReward = reinterpret_cast<const char*>(sqlite3_column_text(statement, 9));
+    record.bonusStreak = sqlite3_column_int(statement, 10);
+    record.customSettings = reinterpret_cast<const char*>(sqlite3_column_text(statement, 11));
+    record.forgivenessCoupons = sqlite3_column_int(statement, 12);
+    record.progressValue = sqlite3_column_int(statement, 13);
+    record.progressGoal = sqlite3_column_int(statement, 14);
+    return record;
 }
 
 }  // namespace rove::data

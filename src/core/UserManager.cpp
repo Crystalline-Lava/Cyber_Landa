@@ -239,8 +239,7 @@ std::unordered_map<std::string, int> UserManager::parseAttributesBlob(const std:
 void UserManager::persistUser(const User& user) {
     bool transactionStarted = false;
     try {
-        m_database.beginTransaction();
-        transactionStarted = true;
+        transactionStarted = m_database.beginTransaction();
         m_database.updateUserLevel(user.username(), user.level());
         m_database.updateUserCurrency(user.username(), user.coins());
         m_database.updateUserAttributes(user.username(), serializeAttributes(user));

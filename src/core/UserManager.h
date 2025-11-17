@@ -1,9 +1,12 @@
 #ifndef USERMANAGER_H
 #define USERMANAGER_H
 
+#include <QObject>
+
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <memory>
 
 #include "DatabaseManager.h"
 #include "User.h"
@@ -20,6 +23,18 @@ namespace rove::data {
  */
 class UserManager final {
 public:
+    class SignalProxy : public QObject {
+        Q_OBJECT
+
+    public:
+        explicit SignalProxy(QObject* parent = nullptr) : QObject(parent) {}
+
+    signals:
+        void levelChanged(int newLevel);
+        void prideChanged(int newPride);
+        void coinsChanged(int newCoins);
+    };
+
     /**
      * @brief Construct manager with dependency injection of DatabaseManager singleton.
      * 中文：通过依赖注入获取 DatabaseManager 单例，便于测试与解耦。
@@ -124,6 +139,11 @@ public:
      */
     void refreshFromDatabase();
 
+    /**
+     * @brief 暴露信号代理，供成就系统监听等级/自豪感等事件。
+     */
+    [[nodiscard]] SignalProxy* signalProxy() const noexcept;
+
 private:
     /**
      * @brief Build User object from raw database record.
@@ -163,6 +183,7 @@ private:
 
     DatabaseManager& m_database;
     std::optional<User> m_activeUser;  //!< RAII session object. 中文：RAII 管理的会话对象。
+    std::unique_ptr<SignalProxy> m_signalProxy;
 };
 
 }  // namespace rove::data

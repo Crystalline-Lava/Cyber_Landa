@@ -28,6 +28,7 @@ TaskManager::TaskManager(DatabaseManager& database, UserManager& userManager)
       m_dailyTimer(),
       m_weeklyTimer(),
       m_timerContext(),
+      m_signalProxy(std::make_unique<SignalProxy>()),
       m_mutex() {
     m_dailyTimer = std::make_unique<QTimer>();
     m_weeklyTimer = std::make_unique<QTimer>();
@@ -163,6 +164,9 @@ void TaskManager::updateTaskProgress(int taskId, int delta) {
     }
     const int newValue = std::clamp(it->second.progressValue() + delta, 0, it->second.progressGoal());
     it->second.setProgressValue(newValue);
+    if (m_signalProxy) {
+        emit m_signalProxy->taskProgressed(taskId, newValue, it->second.progressGoal());
+    }
     if (newValue >= it->second.progressGoal()) {
         applyRewardsLocked(it->second);
         return;
@@ -207,6 +211,8 @@ void TaskManager::resetWeeklyTasks() {
     resetTasksByPredicate(Task::TaskType::Weekly);
     enforceSemesterDeadlinesLocked();
 }
+
+TaskManager::SignalProxy* TaskManager::signalProxy() const noexcept { return m_signalProxy.get(); }
 
 /**
  * @brief 将数据库记录灌入内存缓存，同时重建统计数据。
@@ -377,6 +383,9 @@ void TaskManager::applyRewardsLocked(Task& task) {
         task.setProgressValue(task.progressGoal());
         m_database.updateTask(toRecord(task));
         m_completionStats[task.type()] += 1;
+        if (m_signalProxy) {
+            emit m_signalProxy->taskCompleted(task.id(), static_cast<int>(task.type()), task.difficultyStars());
+        }
         if (m_completionStats[task.type()] % 10 == 0) {
             m_userManager.unlockAchievement();
         }

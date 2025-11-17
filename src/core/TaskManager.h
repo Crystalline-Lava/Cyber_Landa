@@ -24,6 +24,17 @@ namespace rove::data {
  */
 class TaskManager final {
 public:
+    class SignalProxy : public QObject {
+        Q_OBJECT
+
+    public:
+        explicit SignalProxy(QObject* parent = nullptr) : QObject(parent) {}
+
+    signals:
+        void taskCompleted(int taskId, int taskType, int difficultyStars);
+        void taskProgressed(int taskId, int currentValue, int goalValue);
+    };
+
     /**
      * @brief 获取单例实例，首次调用时注入 DatabaseManager 与 UserManager 依赖。
      */
@@ -94,6 +105,11 @@ public:
      */
     void resetWeeklyTasks();
 
+    /**
+     * @brief 获取信号代理，让其它系统订阅任务完成/进度事件。
+     */
+    [[nodiscard]] SignalProxy* signalProxy() const noexcept;
+
 private:
     TaskManager(DatabaseManager& database, UserManager& userManager);
 
@@ -117,6 +133,7 @@ private:
     std::unique_ptr<QTimer> m_dailyTimer;
     std::unique_ptr<QTimer> m_weeklyTimer;
     QObject m_timerContext;  //!< 专用 QObject 作为 lambda 上下文，确保 QTimer 超时回调安全注销。
+    std::unique_ptr<SignalProxy> m_signalProxy;
     mutable std::mutex m_mutex;
 };
 

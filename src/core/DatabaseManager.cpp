@@ -97,6 +97,9 @@ void DatabaseManager::initialize(const std::string& databasePath) {
     openDatabase(databasePath);
     ensureUserTable();
     ensureTaskTable();
+    ensureAchievementTable();
+    ensureShopTable();
+    ensureInventoryTable();
     m_initialized = true;
 }
 
@@ -186,6 +189,80 @@ void DatabaseManager::ensureTaskTable() {
         "progress_value INTEGER NOT NULL DEFAULT 0,"
         "progress_goal INTEGER NOT NULL DEFAULT 100");";
     executeNonQuery(sql);
+}
+
+void DatabaseManager::ensureAchievementTable() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "CREATE TABLE IF NOT EXISTS achievements ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "owner TEXT NOT NULL,"
+        "creator TEXT NOT NULL,"
+        "name TEXT NOT NULL,"
+        "description TEXT NOT NULL,"
+        "icon_path TEXT NOT NULL,"
+        "display_color TEXT NOT NULL,"
+        "type TEXT NOT NULL,"
+        "reward_type TEXT NOT NULL,"
+        "progress_mode TEXT NOT NULL,"
+        "progress_value INTEGER NOT NULL DEFAULT 0,"
+        "progress_goal INTEGER NOT NULL DEFAULT 1,"
+        "reward_coins INTEGER NOT NULL DEFAULT 0,"
+        "reward_attributes TEXT NOT NULL DEFAULT '0,0,0,0,0,0',"
+        "reward_items TEXT NOT NULL DEFAULT '',"
+        "unlocked INTEGER NOT NULL DEFAULT 0,"
+        "completion_time TEXT,"
+        "conditions TEXT NOT NULL,"
+        "gallery_group TEXT NOT NULL DEFAULT 'default',"
+        "created_at TEXT NOT NULL,"
+        "special_metadata TEXT NOT NULL DEFAULT ''");";
+    executeNonQuery(sql);
+}
+
+void DatabaseManager::ensureShopTable() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "CREATE TABLE IF NOT EXISTS shop_items ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "name TEXT NOT NULL,"
+        "description TEXT NOT NULL,"
+        "icon_path TEXT NOT NULL,"
+        "item_type TEXT NOT NULL,"
+        "price_coins INTEGER NOT NULL,"
+        "purchase_limit INTEGER NOT NULL DEFAULT 0,"
+        "available INTEGER NOT NULL DEFAULT 1,"
+        "effect_description TEXT NOT NULL DEFAULT '',"
+        "effect_logic TEXT NOT NULL DEFAULT '',"
+        "prop_effect_type TEXT NOT NULL DEFAULT '',"
+        "prop_duration_minutes INTEGER NOT NULL DEFAULT 0,"
+        "usage_conditions TEXT NOT NULL DEFAULT '',"
+        "physical_redeem TEXT NOT NULL DEFAULT '',"
+        "physical_notes TEXT NOT NULL DEFAULT '',"
+        "lucky_rules TEXT NOT NULL DEFAULT '{}',"
+        "level_requirement INTEGER NOT NULL DEFAULT 1);";
+    executeNonQuery(sql);
+    executeNonQuery("CREATE INDEX IF NOT EXISTS idx_shop_items_type ON shop_items(item_type);");
+}
+
+void DatabaseManager::ensureInventoryTable() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "CREATE TABLE IF NOT EXISTS user_inventory ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "owner TEXT NOT NULL,"
+        "item_id INTEGER NOT NULL,"
+        "quantity INTEGER NOT NULL,"
+        "used_quantity INTEGER NOT NULL DEFAULT 0,"
+        "status TEXT NOT NULL,"
+        "purchase_time TEXT NOT NULL,"
+        "expiration_time TEXT,"
+        "lucky_payload TEXT NOT NULL DEFAULT '{}',"
+        "notes TEXT NOT NULL DEFAULT '',"
+        "FOREIGN KEY(owner) REFERENCES users(username) ON DELETE CASCADE,"
+        "FOREIGN KEY(item_id) REFERENCES shop_items(id) ON DELETE CASCADE);";
+    executeNonQuery(sql);
+    executeNonQuery("CREATE INDEX IF NOT EXISTS idx_inventory_owner ON user_inventory(owner);");
+    executeNonQuery("CREATE INDEX IF NOT EXISTS idx_inventory_item ON user_inventory(item_id);");
 }
 
 /**
@@ -417,6 +494,46 @@ int DatabaseManager::createTask(const TaskRecord& task) {
     return static_cast<int>(sqlite3_last_insert_rowid(m_db.get()));
 }
 
+int DatabaseManager::createAchievement(const AchievementRecord& record) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "INSERT INTO achievements (owner, creator, name, description, icon_path, display_color, type, "
+        "reward_type, progress_mode, progress_value, progress_goal, reward_coins, reward_attributes, "
+        "reward_items, unlocked, completion_time, conditions, gallery_group, created_at, special_metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, record.creator.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 3, record.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 4, record.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 5, record.iconPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 6, record.color.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 7, record.type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 8, record.rewardType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 9, record.progressMode.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 10, record.progressValue);
+    sqlite3_bind_int(stmt.get(), 11, record.progressGoal);
+    sqlite3_bind_int(stmt.get(), 12, record.rewardCoins);
+    sqlite3_bind_text(stmt.get(), 13, record.rewardAttributes.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 14, record.rewardItems.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 15, record.unlocked ? 1 : 0);
+    if (record.completionTime.empty()) {
+        sqlite3_bind_null(stmt.get(), 16);
+    } else {
+        sqlite3_bind_text(stmt.get(), 16, record.completionTime.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    sqlite3_bind_text(stmt.get(), 17, record.conditions.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 18, record.galleryGroup.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 19, record.createdAt.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 20, record.specialMetadata.c_str(), -1, SQLITE_TRANSIENT);
+
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to create achievement", m_db.get()));
+    }
+    return static_cast<int>(sqlite3_last_insert_rowid(m_db.get()));
+}
+
 /**
  * @brief 根据 TaskRecord 更新数据库行，保持内存缓存与磁盘一致。
  * 中文：所有字段一次性写回，保证教师强调的数据一致性。
@@ -450,6 +567,48 @@ bool DatabaseManager::updateTask(const TaskRecord& task) {
     return sqlite3_changes(m_db.get()) > 0;
 }
 
+bool DatabaseManager::updateAchievement(const AchievementRecord& record) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "UPDATE achievements SET owner = ?, creator = ?, name = ?, description = ?, icon_path = ?, "
+        "display_color = ?, type = ?, reward_type = ?, progress_mode = ?, progress_value = ?, "
+        "progress_goal = ?, reward_coins = ?, reward_attributes = ?, reward_items = ?, unlocked = ?, "
+        "completion_time = ?, conditions = ?, gallery_group = ?, created_at = ?, special_metadata = ? "
+        "WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, record.creator.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 3, record.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 4, record.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 5, record.iconPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 6, record.color.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 7, record.type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 8, record.rewardType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 9, record.progressMode.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 10, record.progressValue);
+    sqlite3_bind_int(stmt.get(), 11, record.progressGoal);
+    sqlite3_bind_int(stmt.get(), 12, record.rewardCoins);
+    sqlite3_bind_text(stmt.get(), 13, record.rewardAttributes.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 14, record.rewardItems.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 15, record.unlocked ? 1 : 0);
+    if (record.completionTime.empty()) {
+        sqlite3_bind_null(stmt.get(), 16);
+    } else {
+        sqlite3_bind_text(stmt.get(), 16, record.completionTime.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    sqlite3_bind_text(stmt.get(), 17, record.conditions.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 18, record.galleryGroup.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 19, record.createdAt.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 20, record.specialMetadata.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 21, record.id);
+
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to update achievement", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
 /**
  * @brief 根据任务 ID 删除记录。
  * 中文：提供统一删除入口，便于 TaskManager 在清理自定义任务时使用。
@@ -462,6 +621,18 @@ bool DatabaseManager::deleteTask(int taskId) {
     int rc = sqlite3_step(stmt.get());
     if (rc != SQLITE_DONE) {
         throw std::runtime_error(buildErrorMessage("Failed to delete task", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
+bool DatabaseManager::deleteAchievement(int achievementId) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql = "DELETE FROM achievements WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_int(stmt.get(), 1, achievementId);
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to delete achievement", m_db.get()));
     }
     return sqlite3_changes(m_db.get()) > 0;
 }
@@ -512,6 +683,307 @@ std::vector<DatabaseManager::TaskRecord> DatabaseManager::getAllTasks() const {
         throw std::runtime_error(buildErrorMessage("Failed to read task list", m_db.get()));
     }
     return records;
+}
+
+std::vector<DatabaseManager::AchievementRecord> DatabaseManager::getAchievementsForOwner(
+    const std::string& owner) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT id, owner, creator, name, description, icon_path, display_color, type, reward_type, "
+        "progress_mode, progress_value, progress_goal, reward_coins, reward_attributes, reward_items, "
+        "unlocked, completion_time, conditions, gallery_group, created_at, special_metadata "
+        "FROM achievements WHERE owner = ? ORDER BY id";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, owner.c_str(), -1, SQLITE_TRANSIENT);
+    std::vector<AchievementRecord> records;
+    while (true) {
+        int rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            records.push_back(readAchievementRecord(stmt.get()));
+            continue;
+        }
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+        throw std::runtime_error(buildErrorMessage("Failed to read achievements", m_db.get()));
+    }
+    return records;
+}
+
+int DatabaseManager::insertShopItem(const ShopItemRecord& record) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "INSERT INTO shop_items (name, description, icon_path, item_type, price_coins, purchase_limit, "
+        "available, effect_description, effect_logic, prop_effect_type, prop_duration_minutes, "
+        "usage_conditions, physical_redeem, physical_notes, lucky_rules, level_requirement) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, record.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 3, record.iconPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 4, record.itemType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 5, record.priceCoins);
+    sqlite3_bind_int(stmt.get(), 6, record.purchaseLimit);
+    sqlite3_bind_int(stmt.get(), 7, record.available ? 1 : 0);
+    sqlite3_bind_text(stmt.get(), 8, record.effectDescription.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 9, record.effectLogic.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 10, record.propEffectType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 11, record.propDurationMinutes);
+    sqlite3_bind_text(stmt.get(), 12, record.usageConditions.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 13, record.physicalRedeem.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 14, record.physicalNotes.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 15, record.luckyBagRules.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 16, record.levelRequirement);
+    int rc = sqlite3_step(stmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to insert shop item", m_db.get()));
+    }
+    return static_cast<int>(sqlite3_last_insert_rowid(m_db.get()));
+}
+
+bool DatabaseManager::updateShopItem(const ShopItemRecord& record) {
+    if (record.id < 0) {
+        throw std::runtime_error("Invalid shop item id");
+    }
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "UPDATE shop_items SET name = ?, description = ?, icon_path = ?, item_type = ?, price_coins = ?, "
+        "purchase_limit = ?, available = ?, effect_description = ?, effect_logic = ?, prop_effect_type = ?, "
+        "prop_duration_minutes = ?, usage_conditions = ?, physical_redeem = ?, physical_notes = ?, "
+        "lucky_rules = ?, level_requirement = ? WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, record.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 3, record.iconPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 4, record.itemType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 5, record.priceCoins);
+    sqlite3_bind_int(stmt.get(), 6, record.purchaseLimit);
+    sqlite3_bind_int(stmt.get(), 7, record.available ? 1 : 0);
+    sqlite3_bind_text(stmt.get(), 8, record.effectDescription.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 9, record.effectLogic.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 10, record.propEffectType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 11, record.propDurationMinutes);
+    sqlite3_bind_text(stmt.get(), 12, record.usageConditions.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 13, record.physicalRedeem.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 14, record.physicalNotes.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 15, record.luckyBagRules.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 16, record.levelRequirement);
+    sqlite3_bind_int(stmt.get(), 17, record.id);
+    int rc = sqlite3_step(stmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to update shop item", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
+bool DatabaseManager::deleteShopItem(int itemId) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql = "DELETE FROM shop_items WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_int(stmt.get(), 1, itemId);
+    int rc = sqlite3_step(stmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to delete shop item", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
+std::optional<DatabaseManager::ShopItemRecord> DatabaseManager::getShopItemById(int itemId) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT id, name, description, icon_path, item_type, price_coins, purchase_limit, available, "
+        "effect_description, effect_logic, prop_effect_type, prop_duration_minutes, usage_conditions, "
+        "physical_redeem, physical_notes, lucky_rules, level_requirement FROM shop_items WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_int(stmt.get(), 1, itemId);
+    int rc = sqlite3_step(stmt.get());
+    if (rc == SQLITE_ROW) {
+        return readShopItemRecord(stmt.get());
+    }
+    if (rc == SQLITE_DONE) {
+        return std::nullopt;
+    }
+    throw std::runtime_error(buildErrorMessage("Failed to query shop item", m_db.get()));
+}
+
+std::vector<DatabaseManager::ShopItemRecord> DatabaseManager::getAllShopItems() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT id, name, description, icon_path, item_type, price_coins, purchase_limit, available, "
+        "effect_description, effect_logic, prop_effect_type, prop_duration_minutes, usage_conditions, "
+        "physical_redeem, physical_notes, lucky_rules, level_requirement FROM shop_items ORDER BY id";
+    auto stmt = prepareStatement(sql);
+    std::vector<ShopItemRecord> items;
+    while (true) {
+        int rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            items.push_back(readShopItemRecord(stmt.get()));
+            continue;
+        }
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+        throw std::runtime_error(buildErrorMessage("Failed to read shop items", m_db.get()));
+    }
+    return items;
+}
+
+int DatabaseManager::insertInventoryRecord(const InventoryRecord& record) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "INSERT INTO user_inventory (owner, item_id, quantity, used_quantity, status, purchase_time, "
+        "expiration_time, lucky_payload, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 2, record.itemId);
+    sqlite3_bind_int(stmt.get(), 3, record.quantity);
+    sqlite3_bind_int(stmt.get(), 4, record.usedQuantity);
+    sqlite3_bind_text(stmt.get(), 5, record.status.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 6, record.purchaseTimeIso.c_str(), -1, SQLITE_TRANSIENT);
+    if (record.expirationTimeIso.empty()) {
+        sqlite3_bind_null(stmt.get(), 7);
+    } else {
+        sqlite3_bind_text(stmt.get(), 7, record.expirationTimeIso.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    sqlite3_bind_text(stmt.get(), 8, record.luckyPayload.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 9, record.notes.c_str(), -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to insert inventory", m_db.get()));
+    }
+    return static_cast<int>(sqlite3_last_insert_rowid(m_db.get()));
+}
+
+bool DatabaseManager::updateInventoryRecord(const InventoryRecord& record) {
+    if (record.id < 0) {
+        throw std::runtime_error("Invalid inventory id");
+    }
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "UPDATE user_inventory SET owner = ?, item_id = ?, quantity = ?, used_quantity = ?, status = ?, "
+        "purchase_time = ?, expiration_time = ?, lucky_payload = ?, notes = ? WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 2, record.itemId);
+    sqlite3_bind_int(stmt.get(), 3, record.quantity);
+    sqlite3_bind_int(stmt.get(), 4, record.usedQuantity);
+    sqlite3_bind_text(stmt.get(), 5, record.status.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 6, record.purchaseTimeIso.c_str(), -1, SQLITE_TRANSIENT);
+    if (record.expirationTimeIso.empty()) {
+        sqlite3_bind_null(stmt.get(), 7);
+    } else {
+        sqlite3_bind_text(stmt.get(), 7, record.expirationTimeIso.c_str(), -1, SQLITE_TRANSIENT);
+    }
+    sqlite3_bind_text(stmt.get(), 8, record.luckyPayload.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 9, record.notes.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 10, record.id);
+    int rc = sqlite3_step(stmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to update inventory", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
+bool DatabaseManager::deleteInventoryRecord(int inventoryId) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql = "DELETE FROM user_inventory WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_int(stmt.get(), 1, inventoryId);
+    int rc = sqlite3_step(stmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to delete inventory", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
+std::optional<DatabaseManager::InventoryRecord> DatabaseManager::getInventoryRecordById(int inventoryId) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT id, item_id, owner, quantity, used_quantity, status, purchase_time, expiration_time, "
+        "lucky_payload, notes FROM user_inventory WHERE id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_int(stmt.get(), 1, inventoryId);
+    int rc = sqlite3_step(stmt.get());
+    if (rc == SQLITE_ROW) {
+        return readInventoryRecord(stmt.get());
+    }
+    if (rc == SQLITE_DONE) {
+        return std::nullopt;
+    }
+    throw std::runtime_error(buildErrorMessage("Failed to query inventory", m_db.get()));
+}
+
+std::vector<DatabaseManager::InventoryRecord> DatabaseManager::getInventoryForUser(const std::string& owner) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT id, item_id, owner, quantity, used_quantity, status, purchase_time, expiration_time, "
+        "lucky_payload, notes FROM user_inventory WHERE owner = ? ORDER BY purchase_time DESC";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, owner.c_str(), -1, SQLITE_TRANSIENT);
+    std::vector<InventoryRecord> records;
+    while (true) {
+        int rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            records.push_back(readInventoryRecord(stmt.get()));
+            continue;
+        }
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+        throw std::runtime_error(buildErrorMessage("Failed to list inventory", m_db.get()));
+    }
+    return records;
+}
+
+std::vector<DatabaseManager::InventoryRecord> DatabaseManager::getAllInventoryRecords() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT id, item_id, owner, quantity, used_quantity, status, purchase_time, expiration_time, "
+        "lucky_payload, notes FROM user_inventory";
+    auto stmt = prepareStatement(sql);
+    std::vector<InventoryRecord> records;
+    while (true) {
+        int rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            records.push_back(readInventoryRecord(stmt.get()));
+            continue;
+        }
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+        throw std::runtime_error(buildErrorMessage("Failed to scan inventory", m_db.get()));
+    }
+    return records;
+}
+
+int DatabaseManager::countInventoryByUserAndItem(const std::string& owner, int itemId) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT IFNULL(SUM(quantity), 0) FROM user_inventory WHERE owner = ? AND item_id = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 2, itemId);
+    int rc = sqlite3_step(stmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to count inventory", m_db.get()));
+    }
+    return sqlite3_column_int(stmt.get(), 0);
+}
+
+int DatabaseManager::countCustomRewardAchievements(const std::string& owner,
+                                                   const std::string& monthToken) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "SELECT COUNT(1) FROM achievements WHERE owner = ? AND type = 'Custom' AND reward_type = 'WithReward' "
+        "AND strftime('%Y-%m', created_at) = ?";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, monthToken.c_str(), -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to count achievements", m_db.get()));
+    }
+    return sqlite3_column_int(stmt.get(), 0);
 }
 
 /**
@@ -714,6 +1186,84 @@ DatabaseManager::TaskRecord DatabaseManager::readTaskRecord(sqlite3_stmt* statem
     record.forgivenessCoupons = sqlite3_column_int(statement, 12);
     record.progressValue = sqlite3_column_int(statement, 13);
     record.progressGoal = sqlite3_column_int(statement, 14);
+    return record;
+}
+
+DatabaseManager::AchievementRecord DatabaseManager::readAchievementRecord(sqlite3_stmt* statement) const {
+    AchievementRecord record;
+    record.id = sqlite3_column_int(statement, 0);
+    record.owner = reinterpret_cast<const char*>(sqlite3_column_text(statement, 1));
+    record.creator = reinterpret_cast<const char*>(sqlite3_column_text(statement, 2));
+    record.name = reinterpret_cast<const char*>(sqlite3_column_text(statement, 3));
+    record.description = reinterpret_cast<const char*>(sqlite3_column_text(statement, 4));
+    record.iconPath = reinterpret_cast<const char*>(sqlite3_column_text(statement, 5));
+    record.color = reinterpret_cast<const char*>(sqlite3_column_text(statement, 6));
+    record.type = reinterpret_cast<const char*>(sqlite3_column_text(statement, 7));
+    record.rewardType = reinterpret_cast<const char*>(sqlite3_column_text(statement, 8));
+    record.progressMode = reinterpret_cast<const char*>(sqlite3_column_text(statement, 9));
+    record.progressValue = sqlite3_column_int(statement, 10);
+    record.progressGoal = sqlite3_column_int(statement, 11);
+    record.rewardCoins = sqlite3_column_int(statement, 12);
+    record.rewardAttributes = reinterpret_cast<const char*>(sqlite3_column_text(statement, 13));
+    record.rewardItems = reinterpret_cast<const char*>(sqlite3_column_text(statement, 14));
+    record.unlocked = sqlite3_column_int(statement, 15) != 0;
+    if (sqlite3_column_type(statement, 16) != SQLITE_NULL) {
+        record.completionTime = reinterpret_cast<const char*>(sqlite3_column_text(statement, 16));
+    }
+    record.conditions = reinterpret_cast<const char*>(sqlite3_column_text(statement, 17));
+    record.galleryGroup = reinterpret_cast<const char*>(sqlite3_column_text(statement, 18));
+    record.createdAt = reinterpret_cast<const char*>(sqlite3_column_text(statement, 19));
+    record.specialMetadata = reinterpret_cast<const char*>(sqlite3_column_text(statement, 20));
+    return record;
+}
+
+DatabaseManager::ShopItemRecord DatabaseManager::readShopItemRecord(sqlite3_stmt* statement) const {
+    ShopItemRecord record;
+    record.id = sqlite3_column_int(statement, 0);
+    auto readText = [](sqlite3_stmt* stmt, int column) -> std::string {
+        const unsigned char* text = sqlite3_column_text(stmt, column);
+        if (text == nullptr) {
+            return {};
+        }
+        return reinterpret_cast<const char*>(text);
+    };
+    record.name = readText(statement, 1);
+    record.description = readText(statement, 2);
+    record.iconPath = readText(statement, 3);
+    record.itemType = readText(statement, 4);
+    record.priceCoins = sqlite3_column_int(statement, 5);
+    record.purchaseLimit = sqlite3_column_int(statement, 6);
+    record.available = sqlite3_column_int(statement, 7) != 0;
+    record.effectDescription = readText(statement, 8);
+    record.effectLogic = readText(statement, 9);
+    record.propEffectType = readText(statement, 10);
+    record.propDurationMinutes = sqlite3_column_int(statement, 11);
+    record.usageConditions = readText(statement, 12);
+    record.physicalRedeem = readText(statement, 13);
+    record.physicalNotes = readText(statement, 14);
+    record.luckyBagRules = readText(statement, 15);
+    record.levelRequirement = sqlite3_column_int(statement, 16);
+    return record;
+}
+
+DatabaseManager::InventoryRecord DatabaseManager::readInventoryRecord(sqlite3_stmt* statement) const {
+    InventoryRecord record;
+    record.id = sqlite3_column_int(statement, 0);
+    record.itemId = sqlite3_column_int(statement, 1);
+    const unsigned char* ownerText = sqlite3_column_text(statement, 2);
+    record.owner = ownerText == nullptr ? std::string() : reinterpret_cast<const char*>(ownerText);
+    record.quantity = sqlite3_column_int(statement, 3);
+    record.usedQuantity = sqlite3_column_int(statement, 4);
+    const unsigned char* statusText = sqlite3_column_text(statement, 5);
+    record.status = statusText == nullptr ? std::string() : reinterpret_cast<const char*>(statusText);
+    const unsigned char* purchaseText = sqlite3_column_text(statement, 6);
+    record.purchaseTimeIso = purchaseText == nullptr ? std::string() : reinterpret_cast<const char*>(purchaseText);
+    const unsigned char* expirationText = sqlite3_column_text(statement, 7);
+    record.expirationTimeIso = expirationText == nullptr ? std::string() : reinterpret_cast<const char*>(expirationText);
+    const unsigned char* luckyText = sqlite3_column_text(statement, 8);
+    record.luckyPayload = luckyText == nullptr ? std::string() : reinterpret_cast<const char*>(luckyText);
+    const unsigned char* notesText = sqlite3_column_text(statement, 9);
+    record.notes = notesText == nullptr ? std::string() : reinterpret_cast<const char*>(notesText);
     return record;
 }
 

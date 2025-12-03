@@ -23,7 +23,7 @@ class GrowthDashboard : public QWidget {
     Q_OBJECT
 
 public:
-    GrowthDashboard(rove::analysis::GrowthVisualizer& visualizer, QWidget* parent = nullptr);
+    GrowthDashboard(rove::data::GrowthVisualizer& visualizer, QWidget* parent = nullptr);
     ~GrowthDashboard() override;
 
 public slots:
@@ -32,13 +32,13 @@ public slots:
      * @param user 用户实体。
      * @param snapshots 历史快照列表。
      */
-    void render(const rove::data::User& user, const std::vector<rove::analysis::GrowthSnapshot>& snapshots);
+    void render(const rove::data::User& user, const std::vector<rove::data::GrowthSnapshot>& snapshots);
 
 private:
     /**
      * @brief 构建折线图表并调整坐标轴。
      */
-    void buildTimeline(const std::vector<rove::analysis::GrowthSnapshot>& snapshots);
+    void buildTimeline(const std::vector<rove::data::GrowthSnapshot>& snapshots);
 
     /**
      * @brief 更新雷达图数据。
@@ -46,7 +46,7 @@ private:
     void updateRadar(const rove::data::User::AttributeSet& attrs);
 
     std::unique_ptr<Ui::GrowthDashboard> ui;
-    rove::analysis::GrowthVisualizer& m_visualizer;
+    rove::data::GrowthVisualizer& m_visualizer;
     QtCharts::QChartView* m_lineView{nullptr};
     QtCharts::QChartView* m_radarView{nullptr};
 };

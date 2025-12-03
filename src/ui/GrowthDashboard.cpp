@@ -8,7 +8,7 @@
 
 using namespace QtCharts;
 
-GrowthDashboard::GrowthDashboard(rove::analysis::GrowthVisualizer& visualizer, QWidget* parent)
+GrowthDashboard::GrowthDashboard(rove::data::GrowthVisualizer& visualizer, QWidget* parent)
     : QWidget(parent), ui(std::make_unique<Ui::GrowthDashboard>()), m_visualizer(visualizer) {
     ui->setupUi(this);
     m_radarView = new QChartView(new QChart(), this);
@@ -21,7 +21,7 @@ GrowthDashboard::GrowthDashboard(rove::analysis::GrowthVisualizer& visualizer, Q
 GrowthDashboard::~GrowthDashboard() = default;
 
 void GrowthDashboard::render(const rove::data::User& user,
-                             const std::vector<rove::analysis::GrowthSnapshot>& snapshots) {
+                             const std::vector<rove::data::GrowthSnapshot>& snapshots) {
     updateRadar(user.attributes());
     buildTimeline(snapshots);
 }
@@ -29,7 +29,7 @@ void GrowthDashboard::render(const rove::data::User& user,
 /**
  * @brief 绘制成长时间线，使用折线图展示成长值趋势。
  */
-void GrowthDashboard::buildTimeline(const std::vector<rove::analysis::GrowthSnapshot>& snapshots) {
+void GrowthDashboard::buildTimeline(const std::vector<rove::data::GrowthSnapshot>& snapshots) {
     auto* chart = new QChart();
     auto* series = new QLineSeries(chart);
     int index = 0;

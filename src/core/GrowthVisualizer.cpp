@@ -37,6 +37,11 @@ std::unique_ptr<QtCharts::QChart> GrowthVisualizer::buildRadarChart(const Growth
         {QStringLiteral("自豪感"), snapshot.attributes().pride},
     };
 
+    if (points.empty()) {
+        // 没有可用数据时直接返回空图表，避免除零。
+        return std::unique_ptr<QtCharts::QChart>(chart.release());
+    }
+
     const double step = 360.0 / static_cast<double>(points.size());
     for (int i = 0; i < static_cast<int>(points.size()); ++i) {
         double angle = i * step;
@@ -47,12 +52,12 @@ std::unique_ptr<QtCharts::QChart> GrowthVisualizer::buildRadarChart(const Growth
     series->append(360.0, points.front().second);
 
     chart->addSeries(series);
-    chart->addAxis(axisAngular, Qt::AlignLeft);
-    chart->addAxis(axisRadial, Qt::AlignLeft);
+    chart->addAxis(axisAngular, QtCharts::QPolarChart::PolarOrientationAngular);
+    chart->addAxis(axisRadial, QtCharts::QPolarChart::PolarOrientationRadial);
     series->attachAxis(axisAngular);
     series->attachAxis(axisRadial);
 
-    return chart;
+    return std::unique_ptr<QtCharts::QChart>(chart.release());
 }
 
 std::unique_ptr<QtCharts::QChart> GrowthVisualizer::buildGrowthLineChart(
@@ -140,7 +145,11 @@ QtCharts::QScatterSeries* GrowthVisualizer::buildMilestoneSeries(const std::vect
                 closestIndex = i;
             }
         }
-        series->append(closestIndex, snapshots.empty() ? 0 : snapshots[closestIndex].growthPoints());
+        if (!snapshots.empty()) {
+            series->append(closestIndex, snapshots[closestIndex].growthPoints());
+        } else {
+            series->append(closestIndex, 0);
+        }
     }
     return series;
 }

@@ -44,8 +44,27 @@ public:
 
 private:
     GrowthVisualizer() = default;
+    /**
+     * @brief 构建等级（Level）随时间变化的折线序列。
+     * @param snapshots 成长快照序列，按时间排序。
+     * @return QLineSeries* 指向等级折线序列的指针，需由调用者管理其生命周期。
+     */
     QtCharts::QLineSeries* buildLevelSeries(const std::vector<GrowthSnapshot>& snapshots) const;
+
+    /**
+     * @brief 构建成长值（Growth）随时间变化的折线序列。
+     * @param snapshots 成长快照序列，按时间排序。
+     * @return QLineSeries* 指向成长值折线序列的指针，需由调用者管理其生命周期。
+     */
     QtCharts::QLineSeries* buildGrowthSeries(const std::vector<GrowthSnapshot>& snapshots) const;
+
+    /**
+     * @brief 构建里程碑与宽恕点的散点序列，用于在成长折线图中标记特殊事件。
+     * @param milestones 里程碑日志条目集合。
+     * @param snapshots 成长快照序列，按时间排序。
+     * @param forgivenIds 被宽恕隐藏的里程碑 ID 集合。
+     * @return QScatterSeries* 指向散点序列的指针，需由调用者管理其生命周期。
+     */
     QtCharts::QScatterSeries* buildMilestoneSeries(const std::vector<LogEntry>& milestones,
                                                    const std::vector<GrowthSnapshot>& snapshots,
                                                    const std::set<int>& forgivenIds) const;

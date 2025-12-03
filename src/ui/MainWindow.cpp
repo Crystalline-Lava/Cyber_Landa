@@ -32,7 +32,7 @@ MainWindow::MainWindow(rove::data::UserManager& userManager,
                        rove::data::ShopManager& shopManager,
                        rove::data::InventoryManager& inventoryManager,
                        rove::simulation::SerendipityEngine& serendipityEngine,
-                       rove::analysis::GrowthVisualizer& growthVisualizer,
+                       rove::data::GrowthVisualizer& growthVisualizer,
                        QWidget* parent)
     : QMainWindow(parent)
     , ui(std::make_unique<Ui::MainWindow>())

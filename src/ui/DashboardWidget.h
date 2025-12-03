@@ -48,6 +48,12 @@ private:
      */
     void buildRadarChart();
 
+    /**
+     * @brief 刷新雷达图数据序列，确保属性值同步展示。
+     * @param attrs 用户属性集合。
+     */
+    void updateRadar(const rove::data::User::AttributeSet& attrs);
+
     std::unique_ptr<Ui::DashboardWidget> ui;
     QtCharts::QPolarChart* m_polarChart{nullptr};
     QtCharts::QChartView* m_chartView{nullptr};

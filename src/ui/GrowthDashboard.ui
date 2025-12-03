@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GrowthDashboard</class>
+ <widget class="QWidget" name="GrowthDashboard">
+  <layout class="QHBoxLayout" name="horizontalLayout">
+   <item>
+    <widget class="QWidget" name="radarContainer">
+     <layout class="QVBoxLayout" name="radarLayout"/>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="timelineContainer">
+     <layout class="QVBoxLayout" name="timelineLayout"/>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -167,6 +167,35 @@ public:
         std::string notes;
     };
 
+    struct LogRecord {
+        int id = -1;
+        std::string timestampIso;
+        std::string type;
+        std::string content;
+        std::optional<int> relatedId;
+        std::string attributeChanges;
+        int levelChange = 0;
+        std::string specialEvent;
+        std::string mood;
+    };
+
+    struct GrowthSnapshotRecord {
+        int id = -1;
+        std::string timestampIso;
+        int userLevel = 1;
+        int growthPoints = 0;
+        int execution = 0;
+        int perseverance = 0;
+        int decision = 0;
+        int knowledge = 0;
+        int social = 0;
+        int pride = 0;
+        int achievementCount = 0;
+        int completedTasks = 0;
+        int failedTasks = 0;
+        int manualLogCount = 0;
+    };
+
     /**
      * @brief Insert a new user and return row id.
      * 中文：插入新用户并返回行号。
@@ -251,6 +280,16 @@ public:
     void ensureInventoryTable();
 
     /**
+     * @brief 确保日志表存在，支持按时间与类型索引。
+     */
+    void ensureLogTable();
+
+    /**
+     * @brief 确保成长快照表存在，用于绘制时间线。
+     */
+    void ensureGrowthSnapshotTable();
+
+    /**
      * @brief 新建任务记录并返回行号。
      */
     int createTask(const TaskRecord& task);
@@ -322,6 +361,41 @@ public:
     [[nodiscard]] int countInventoryByUserAndItem(const std::string& owner, int itemId) const;
 
     /**
+     * @brief 日志模块：插入与按条件查询日志记录。
+     */
+    /**
+     * @brief 插入一条日志记录并返回数据库主键。
+     * 中文：用于将自动或手动日志持久化，保持不可修改特性。
+     */
+    int insertLogRecord(const LogRecord& record);
+
+    /**
+     * @brief 按类型、时间区间、心情与关键词筛选日志。
+     * 中文：用于日志面板检索，结合时间索引提升查询效率。
+     */
+    [[nodiscard]] std::vector<LogRecord> queryLogRecords(const std::optional<std::string>& typeFilter,
+                                                        const std::optional<std::string>& startIso,
+                                                        const std::optional<std::string>& endIso,
+                                                        const std::optional<std::string>& moodFilter,
+                                                        const std::optional<std::string>& keyword) const;
+
+    /**
+     * @brief 成长快照模块：插入快照与区间查询。
+     */
+    /**
+     * @brief 写入一次成长快照，用于绘制时间轴。
+     * 中文：在关键节点或定时任务后调用，捕获属性与等级变化。
+     */
+    int insertGrowthSnapshot(const GrowthSnapshotRecord& record);
+
+    /**
+     * @brief 根据时间范围查询成长快照。
+     * 中文：支持压缩后的时间线数据抓取，用于可视化。
+     */
+    [[nodiscard]] std::vector<GrowthSnapshotRecord> queryGrowthSnapshots(const std::optional<std::string>& startIso,
+                                                                        const std::optional<std::string>& endIso) const;
+
+    /**
      * @brief Begin explicit transaction.
      * 中文：开启显式事务。
      *
@@ -378,6 +452,8 @@ private:
     [[nodiscard]] AchievementRecord readAchievementRecord(sqlite3_stmt* statement) const;
     [[nodiscard]] ShopItemRecord readShopItemRecord(sqlite3_stmt* statement) const;
     [[nodiscard]] InventoryRecord readInventoryRecord(sqlite3_stmt* statement) const;
+    [[nodiscard]] LogRecord readLogRecord(sqlite3_stmt* statement) const;
+    [[nodiscard]] GrowthSnapshotRecord readGrowthSnapshotRecord(sqlite3_stmt* statement) const;
 
     DatabaseHandle m_db;
     std::string m_databasePath;

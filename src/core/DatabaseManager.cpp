@@ -100,6 +100,8 @@ void DatabaseManager::initialize(const std::string& databasePath) {
     ensureAchievementTable();
     ensureShopTable();
     ensureInventoryTable();
+    ensureLogTable();
+    ensureGrowthSnapshotTable();
     m_initialized = true;
 }
 
@@ -263,6 +265,57 @@ void DatabaseManager::ensureInventoryTable() {
     executeNonQuery(sql);
     executeNonQuery("CREATE INDEX IF NOT EXISTS idx_inventory_owner ON user_inventory(owner);");
     executeNonQuery("CREATE INDEX IF NOT EXISTS idx_inventory_item ON user_inventory(item_id);");
+}
+
+
+/**
+ * @brief 确保日志表存在并建立必要索引。
+ * 中文：记录自动、手动、里程碑与事件日志，为时间线过滤提供结构。
+ */
+void DatabaseManager::ensureLogTable() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "CREATE TABLE IF NOT EXISTS logs (\n"
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+        "timestamp TEXT NOT NULL,\n"
+        "type TEXT NOT NULL,\n"
+        "content TEXT NOT NULL,\n"
+        "related_id INTEGER,\n"
+        "attribute_changes TEXT NOT NULL DEFAULT '{}',\n"
+        "level_change INTEGER NOT NULL DEFAULT 0,\n"
+        "special_event TEXT NOT NULL DEFAULT '',\n"
+        "mood TEXT NOT NULL DEFAULT ''"
+        " );";
+    executeNonQuery(sql);
+    executeNonQuery("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);");
+    executeNonQuery("CREATE INDEX IF NOT EXISTS idx_logs_type ON logs(type);");
+}
+
+/**
+ * @brief 确保成长快照表存在，支撑时间轴可视化。
+ * 中文：存储等级、成长值与属性，方便绘制折线和雷达图。
+ */
+void DatabaseManager::ensureGrowthSnapshotTable() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "CREATE TABLE IF NOT EXISTS growth_snapshots (\n"
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+        "timestamp TEXT NOT NULL,\n"
+        "user_level INTEGER NOT NULL,\n"
+        "growth_points INTEGER NOT NULL,\n"
+        "execution INTEGER NOT NULL,\n"
+        "perseverance INTEGER NOT NULL,\n"
+        "decision INTEGER NOT NULL,\n"
+        "knowledge INTEGER NOT NULL,\n"
+        "social INTEGER NOT NULL,\n"
+        "pride INTEGER NOT NULL,\n"
+        "achievement_count INTEGER NOT NULL,\n"
+        "completed_tasks INTEGER NOT NULL,\n"
+        "failed_tasks INTEGER NOT NULL,\n"
+        "manual_log_count INTEGER NOT NULL"
+        " );";
+    executeNonQuery(sql);
+    executeNonQuery("CREATE INDEX IF NOT EXISTS idx_growth_snapshots_timestamp ON growth_snapshots(timestamp);");
 }
 
 /**
@@ -987,6 +1040,154 @@ int DatabaseManager::countCustomRewardAchievements(const std::string& owner,
 }
 
 /**
+ * @brief 插入一条日志记录，遵循不可变设计。
+ * 中文：所有日志写入后不可更新或删除，仅追加。
+ */
+int DatabaseManager::insertLogRecord(const LogRecord& record) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "INSERT INTO logs (timestamp, type, content, related_id, attribute_changes, level_change, special_event, mood) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.timestampIso.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 2, record.type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 3, record.content.c_str(), -1, SQLITE_TRANSIENT);
+    if (record.relatedId.has_value()) {
+        sqlite3_bind_int(stmt.get(), 4, *record.relatedId);
+    } else {
+        sqlite3_bind_null(stmt.get(), 4);
+    }
+    sqlite3_bind_text(stmt.get(), 5, record.attributeChanges.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 6, record.levelChange);
+    sqlite3_bind_text(stmt.get(), 7, record.specialEvent.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 8, record.mood.c_str(), -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to insert log record", m_db.get()));
+    }
+    return static_cast<int>(sqlite3_last_insert_rowid(m_db.get()));
+}
+
+/**
+ * @brief 按过滤条件读取日志，使用时间索引提升性能。
+ * 中文：结合类型、时间、心情与关键字进行筛选。
+ */
+std::vector<DatabaseManager::LogRecord> DatabaseManager::queryLogRecords(const std::optional<std::string>& typeFilter,
+                                                                       const std::optional<std::string>& startIso,
+                                                                       const std::optional<std::string>& endIso,
+                                                                       const std::optional<std::string>& moodFilter,
+                                                                       const std::optional<std::string>& keyword) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    std::string sql = "SELECT id, timestamp, type, content, related_id, attribute_changes, level_change, special_event, mood FROM logs WHERE 1=1";
+    std::vector<std::string> params;
+    if (typeFilter.has_value()) {
+        sql += " AND type = ?";
+        params.push_back(*typeFilter);
+    }
+    if (startIso.has_value()) {
+        sql += " AND timestamp >= ?";
+        params.push_back(*startIso);
+    }
+    if (endIso.has_value()) {
+        sql += " AND timestamp <= ?";
+        params.push_back(*endIso);
+    }
+    if (moodFilter.has_value()) {
+        sql += " AND mood = ?";
+        params.push_back(*moodFilter);
+    }
+    if (keyword.has_value()) {
+        sql += " AND content LIKE ?";
+        params.push_back(std::string("%") + *keyword + "%");
+    }
+    sql += " ORDER BY timestamp ASC";
+    auto stmt = prepareStatement(sql);
+    for (std::size_t i = 0; i < params.size(); ++i) {
+        sqlite3_bind_text(stmt.get(), static_cast<int>(i + 1), params[i].c_str(), -1, SQLITE_TRANSIENT);
+    }
+    std::vector<LogRecord> records;
+    while (true) {
+        int rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            records.push_back(readLogRecord(stmt.get()));
+            continue;
+        }
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+        throw std::runtime_error(buildErrorMessage("Failed to query logs", m_db.get()));
+    }
+    return records;
+}
+
+/**
+ * @brief 写入成长快照。
+ * 中文：在关键事件或定时任务后调用，捕获成长曲线。
+ */
+int DatabaseManager::insertGrowthSnapshot(const GrowthSnapshotRecord& record) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "INSERT INTO growth_snapshots (timestamp, user_level, growth_points, execution, perseverance, decision, knowledge, social, pride, achievement_count, completed_tasks, failed_tasks, manual_log_count) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_text(stmt.get(), 1, record.timestampIso.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt.get(), 2, record.userLevel);
+    sqlite3_bind_int(stmt.get(), 3, record.growthPoints);
+    sqlite3_bind_int(stmt.get(), 4, record.execution);
+    sqlite3_bind_int(stmt.get(), 5, record.perseverance);
+    sqlite3_bind_int(stmt.get(), 6, record.decision);
+    sqlite3_bind_int(stmt.get(), 7, record.knowledge);
+    sqlite3_bind_int(stmt.get(), 8, record.social);
+    sqlite3_bind_int(stmt.get(), 9, record.pride);
+    sqlite3_bind_int(stmt.get(), 10, record.achievementCount);
+    sqlite3_bind_int(stmt.get(), 11, record.completedTasks);
+    sqlite3_bind_int(stmt.get(), 12, record.failedTasks);
+    sqlite3_bind_int(stmt.get(), 13, record.manualLogCount);
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to insert growth snapshot", m_db.get()));
+    }
+    return static_cast<int>(sqlite3_last_insert_rowid(m_db.get()));
+}
+
+/**
+ * @brief 查询成长快照。
+ * 中文：可按时间区间提取用于可视化和压缩。
+ */
+std::vector<DatabaseManager::GrowthSnapshotRecord> DatabaseManager::queryGrowthSnapshots(const std::optional<std::string>& startIso,
+                                                                                     const std::optional<std::string>& endIso) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    std::string sql = "SELECT id, timestamp, user_level, growth_points, execution, perseverance, decision, knowledge, social, pride, achievement_count, completed_tasks, failed_tasks, manual_log_count FROM growth_snapshots WHERE 1=1";
+    std::vector<std::string> params;
+    if (startIso.has_value()) {
+        sql += " AND timestamp >= ?";
+        params.push_back(*startIso);
+    }
+    if (endIso.has_value()) {
+        sql += " AND timestamp <= ?";
+        params.push_back(*endIso);
+    }
+    sql += " ORDER BY timestamp ASC";
+    auto stmt = prepareStatement(sql);
+    for (std::size_t i = 0; i < params.size(); ++i) {
+        sqlite3_bind_text(stmt.get(), static_cast<int>(i + 1), params[i].c_str(), -1, SQLITE_TRANSIENT);
+    }
+    std::vector<GrowthSnapshotRecord> records;
+    while (true) {
+        int rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            records.push_back(readGrowthSnapshotRecord(stmt.get()));
+            continue;
+        }
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+        throw std::runtime_error(buildErrorMessage("Failed to query growth snapshots", m_db.get()));
+    }
+    return records;
+}
+
+/**
  * @brief Begin an explicit transaction to guard multiple operations.
  * 中文：开启显式事务以保护多条操作的原子性。
  *
@@ -1265,6 +1466,54 @@ DatabaseManager::InventoryRecord DatabaseManager::readInventoryRecord(sqlite3_st
     const unsigned char* notesText = sqlite3_column_text(statement, 9);
     record.notes = notesText == nullptr ? std::string() : reinterpret_cast<const char*>(notesText);
     return record;
+
+/**
+ * @brief 反序列化 SQLite 行为内存日志记录。
+ */
+DatabaseManager::LogRecord DatabaseManager::readLogRecord(sqlite3_stmt* statement) const {
+    LogRecord record;
+    record.id = sqlite3_column_int(statement, 0);
+    const unsigned char* ts = sqlite3_column_text(statement, 1);
+    record.timestampIso = ts == nullptr ? std::string() : reinterpret_cast<const char*>(ts);
+    const unsigned char* typeText = sqlite3_column_text(statement, 2);
+    record.type = typeText == nullptr ? std::string() : reinterpret_cast<const char*>(typeText);
+    const unsigned char* contentText = sqlite3_column_text(statement, 3);
+    record.content = contentText == nullptr ? std::string() : reinterpret_cast<const char*>(contentText);
+    if (sqlite3_column_type(statement, 4) != SQLITE_NULL) {
+        record.relatedId = sqlite3_column_int(statement, 4);
+    }
+    const unsigned char* attrText = sqlite3_column_text(statement, 5);
+    record.attributeChanges = attrText == nullptr ? std::string() : reinterpret_cast<const char*>(attrText);
+    record.levelChange = sqlite3_column_int(statement, 6);
+    const unsigned char* specialText = sqlite3_column_text(statement, 7);
+    record.specialEvent = specialText == nullptr ? std::string() : reinterpret_cast<const char*>(specialText);
+    const unsigned char* moodText = sqlite3_column_text(statement, 8);
+    record.mood = moodText == nullptr ? std::string() : reinterpret_cast<const char*>(moodText);
+    return record;
+}
+
+/**
+ * @brief 反序列化成长快照行。
+ */
+DatabaseManager::GrowthSnapshotRecord DatabaseManager::readGrowthSnapshotRecord(sqlite3_stmt* statement) const {
+    GrowthSnapshotRecord record;
+    record.id = sqlite3_column_int(statement, 0);
+    const unsigned char* ts = sqlite3_column_text(statement, 1);
+    record.timestampIso = ts == nullptr ? std::string() : reinterpret_cast<const char*>(ts);
+    record.userLevel = sqlite3_column_int(statement, 2);
+    record.growthPoints = sqlite3_column_int(statement, 3);
+    record.execution = sqlite3_column_int(statement, 4);
+    record.perseverance = sqlite3_column_int(statement, 5);
+    record.decision = sqlite3_column_int(statement, 6);
+    record.knowledge = sqlite3_column_int(statement, 7);
+    record.social = sqlite3_column_int(statement, 8);
+    record.pride = sqlite3_column_int(statement, 9);
+    record.achievementCount = sqlite3_column_int(statement, 10);
+    record.completedTasks = sqlite3_column_int(statement, 11);
+    record.failedTasks = sqlite3_column_int(statement, 12);
+    record.manualLogCount = sqlite3_column_int(statement, 13);
+    return record;
+}
 }
 
 }  // namespace rove::data

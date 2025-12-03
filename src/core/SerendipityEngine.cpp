@@ -54,7 +54,13 @@ SerendipityEngine::SerendipityResult SerendipityEngine::rollEvent() {
         result.description = "获得微小祝福，成长值 +5";
         if (m_userManager.hasActiveUser()) {
             auto& user = m_userManager.activeUser();
+            const int previousLevel = user.level();  // 中文：记录旧等级以便后续发送信号。
             user.addGrowthPoints(5);
+            m_userManager.saveActiveUser();  // 中文：持久化成长奖励，防止重启丢失。
+            auto* proxy = m_userManager.signalProxy();
+            if (proxy && user.level() != previousLevel) {
+                emit proxy->levelChanged(user.level());  // 中文：等级变动时通知 UI。
+            }
         }
         return result;
     }

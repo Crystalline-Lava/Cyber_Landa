@@ -27,14 +27,9 @@ Lanzhou University Development Agent Guide
 
 cpp
 
-// 1. Use Google C++ code style
-// 2. Class names use PascalCase: class DatabaseManager
-// 3. Variables use camelCase: QString userName;
-// 4. Member variables use m_ prefix: int m_userLevel;
-// 5. EVERY CLASS AND METHOD MUST HAVE DETAILED COMMENTARY FOR CODE EXPLANATION
-// 6. Use smart pointers for resource management
-// 7. Exception-safe design
-// 8. Comment complex algorithms and business logic thoroughly
+// 1. EVERY CLASS AND METHOD MUST HAVE DETAILED COMMENTARY FOR CODE EXPLANATION
+// 2. Exception-safe design
+// 3. Comment complex algorithms and business logic thoroughly
 
 ### COMMENTARY REQUIREMENTS (FOR TEACHER EXPLANATION)
 

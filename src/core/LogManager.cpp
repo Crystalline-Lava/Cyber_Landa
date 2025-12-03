@@ -1,5 +1,6 @@
 #include "LogManager.h"
 
+#include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -25,7 +26,7 @@ LogManager::LogManager(DatabaseManager& database,
       m_userManager(userManager),
       m_achievementManager(achievementManager),
       m_taskManager(taskManager),
-      m_forgivenLogIds() {
+      m_forgivenLogIds(m_database.loadForgivenLogIds()) {
     bindSystemEvents();
 }
 
@@ -103,9 +104,7 @@ GrowthSnapshot LogManager::captureSnapshot() {
     const auto& stats = user.progress();
     GrowthSnapshot snapshot(-1, QDateTime::currentDateTime(), user.level(), user.growthPoints(), user.attributes(),
                             stats.achievementsUnlocked, stats.totalTasksCompleted, stats.personalTasksCompleted,
-                            static_cast<int>(filterLogs(LogEntry::LogType::Manual, std::nullopt, std::nullopt,
-                                                       std::nullopt, std::nullopt, true)
-                                            .size()));
+                            static_cast<int>(m_database.countManualLogs()));
     DatabaseManager::GrowthSnapshotRecord record{};
     record.timestampIso = snapshot.timestamp().toString(Qt::ISODate).toStdString();
     record.userLevel = snapshot.level();
@@ -139,9 +138,10 @@ std::vector<GrowthSnapshot> LogManager::querySnapshots(const std::optional<QDate
                                 record.achievementCount, record.completedTasks, record.failedTasks, record.manualLogCount);
         snapshots.push_back(snapshot);
     }
-    if (snapshots.size() > 200) {
+    constexpr std::size_t kMaxSnapshotDisplayPoints = 200;
+    if (snapshots.size() > kMaxSnapshotDisplayPoints) {
         std::vector<GrowthSnapshot> compressed;
-        const std::size_t step = snapshots.size() / 200 + 1;
+        const std::size_t step = (snapshots.size() + kMaxSnapshotDisplayPoints - 1) / kMaxSnapshotDisplayPoints;
         for (std::size_t i = 0; i < snapshots.size(); i += step) {
             compressed.push_back(snapshots[i]);
         }
@@ -150,7 +150,11 @@ std::vector<GrowthSnapshot> LogManager::querySnapshots(const std::optional<QDate
     return snapshots;
 }
 
-void LogManager::forgiveLog(int logId) { m_forgivenLogIds.insert(logId); }
+void LogManager::forgiveLog(int logId) {
+    if (m_database.markLogForgiven(logId)) {
+        m_forgivenLogIds.insert(logId);
+    }
+}
 
 int LogManager::persistLog(const LogEntry& entry) {
     DatabaseManager::LogRecord record{};
@@ -225,6 +229,7 @@ std::optional<LogEntry::MoodTag> LogManager::deserializeMood(const std::string& 
     if (text == "😔") {
         return LogEntry::MoodTag::Sad;
     }
+    qWarning() << "Unknown mood string from database:" << QString::fromStdString(text);
     return std::nullopt;
 }
 

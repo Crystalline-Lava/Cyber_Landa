@@ -34,7 +34,12 @@ LogEntry::LogEntry(int id,
 
 int LogEntry::id() const noexcept { return m_id; }
 
-void LogEntry::setId(int id) noexcept { m_id = id; }
+void LogEntry::setId(int id) noexcept {
+    // 仅允许在初次持久化后写入数据库生成的 ID，防止外部修改已存在记录。
+    if (m_id < 0) {
+        m_id = id;
+    }
+}
 
 const QDateTime& LogEntry::timestamp() const noexcept { return m_timestamp; }
 
@@ -79,7 +84,7 @@ std::string LogEntry::moodToEmoji(LogEntry::MoodTag mood) {
         case MoodTag::Sad:
             return "😔";
     }
-    return "";
+    return "😐";  // 未知值时回退到中立，保持 UI 一致性。
 }
 
 std::string LogEntry::typeToString(LogEntry::LogType type) {
@@ -93,7 +98,7 @@ std::string LogEntry::typeToString(LogEntry::LogType type) {
         case LogType::Event:
             return "Event";
     }
-    return "Auto";
+    return "Auto";  // 默认回退到自动日志，保持兼容性。
 }
 
 LogEntry::LogType LogEntry::typeFromString(const std::string& text) {

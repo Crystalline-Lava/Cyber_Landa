@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -285,6 +286,11 @@ public:
     void ensureLogTable();
 
     /**
+     * @brief 确保宽恕日志表存在，持久化记录被隐藏的日志 ID。
+     */
+    void ensureForgivenLogTable();
+
+    /**
      * @brief 确保成长快照表存在，用于绘制时间线。
      */
     void ensureGrowthSnapshotTable();
@@ -374,10 +380,25 @@ public:
      * 中文：用于日志面板检索，结合时间索引提升查询效率。
      */
     [[nodiscard]] std::vector<LogRecord> queryLogRecords(const std::optional<std::string>& typeFilter,
-                                                        const std::optional<std::string>& startIso,
-                                                        const std::optional<std::string>& endIso,
-                                                        const std::optional<std::string>& moodFilter,
-                                                        const std::optional<std::string>& keyword) const;
+                                                         const std::optional<std::string>& startIso,
+                                                         const std::optional<std::string>& endIso,
+                                                         const std::optional<std::string>& moodFilter,
+                                                         const std::optional<std::string>& keyword) const;
+
+    /**
+     * @brief 统计手动日志数量，用于成长快照采集时快速聚合数据。
+     */
+    [[nodiscard]] int countManualLogs() const;
+
+    /**
+     * @brief 将指定日志标记为宽恕隐藏状态并持久化。
+     */
+    bool markLogForgiven(int logId);
+
+    /**
+     * @brief 读取所有已宽恕日志 ID，确保跨会话状态一致。
+     */
+    [[nodiscard]] std::set<int> loadForgivenLogIds() const;
 
     /**
      * @brief 成长快照模块：插入快照与区间查询。

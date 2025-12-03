@@ -101,6 +101,7 @@ void DatabaseManager::initialize(const std::string& databasePath) {
     ensureShopTable();
     ensureInventoryTable();
     ensureLogTable();
+    ensureForgivenLogTable();
     ensureGrowthSnapshotTable();
     m_initialized = true;
 }
@@ -289,6 +290,20 @@ void DatabaseManager::ensureLogTable() {
     executeNonQuery(sql);
     executeNonQuery("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);");
     executeNonQuery("CREATE INDEX IF NOT EXISTS idx_logs_type ON logs(type);");
+}
+
+/**
+ * @brief 确保宽恕日志表存在，记录被隐藏的日志 ID，支持跨会话恢复状态。
+ * 中文：宽恕表仅保存日志主键，依赖外键约束保证数据一致性。
+ */
+void DatabaseManager::ensureForgivenLogTable() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql =
+        "CREATE TABLE IF NOT EXISTS forgiven_logs (\n"
+        "log_id INTEGER PRIMARY KEY,\n"
+        "FOREIGN KEY(log_id) REFERENCES logs(id) ON DELETE CASCADE\n"
+        ");";
+    executeNonQuery(sql);
 }
 
 /**
@@ -1118,6 +1133,60 @@ std::vector<DatabaseManager::LogRecord> DatabaseManager::queryLogRecords(const s
         throw std::runtime_error(buildErrorMessage("Failed to query logs", m_db.get()));
     }
     return records;
+}
+
+/**
+ * @brief 统计手动日志数量，避免从数据库加载全部记录。
+ * 中文：采用 COUNT(*) 聚合，加快成长快照的聚合速度。
+ */
+int DatabaseManager::countManualLogs() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql = "SELECT COUNT(*) FROM logs WHERE type = 'Manual'";
+    auto stmt = prepareStatement(sql);
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_ROW) {
+        throw std::runtime_error(buildErrorMessage("Failed to count manual logs", m_db.get()));
+    }
+    return sqlite3_column_int(stmt.get(), 0);
+}
+
+/**
+ * @brief 将日志主键写入宽恕表，若已存在则忽略。
+ * 中文：使用 INSERT OR IGNORE 避免重复写入引发错误。
+ */
+bool DatabaseManager::markLogForgiven(int logId) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql = "INSERT OR IGNORE INTO forgiven_logs (log_id) VALUES (?)";
+    auto stmt = prepareStatement(sql);
+    sqlite3_bind_int(stmt.get(), 1, logId);
+    int rc = sqlite3_step(stmt.get());
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(buildErrorMessage("Failed to persist forgiven log", m_db.get()));
+    }
+    return sqlite3_changes(m_db.get()) > 0;
+}
+
+/**
+ * @brief 读取宽恕表中的所有日志 ID，供内存状态初始化。
+ * 中文：使用 std::set 保证唯一性和快速查找。
+ */
+std::set<int> DatabaseManager::loadForgivenLogIds() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const std::string sql = "SELECT log_id FROM forgiven_logs";
+    auto stmt = prepareStatement(sql);
+    std::set<int> ids;
+    while (true) {
+        int rc = sqlite3_step(stmt.get());
+        if (rc == SQLITE_ROW) {
+            ids.insert(sqlite3_column_int(stmt.get(), 0));
+            continue;
+        }
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+        throw std::runtime_error(buildErrorMessage("Failed to load forgiven logs", m_db.get()));
+    }
+    return ids;
 }
 
 /**

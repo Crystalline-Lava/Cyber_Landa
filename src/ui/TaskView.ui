@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TaskView</class>
+ <widget class="QWidget" name="TaskView">
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QComboBox" name="periodCombo"/>
+   </item>
+   <item>
+    <widget class="QTreeWidget" name="taskTree">
+     <column><property name="text"><string>任务</string></property></column>
+     <column><property name="text"><string>奖励</string></property></column>
+     <column><property name="text"><string>状态</string></property></column>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="completeBtn">
+     <property name="text"><string>标记完成</string></property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

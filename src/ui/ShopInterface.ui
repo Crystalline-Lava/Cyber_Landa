@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ShopInterface</class>
+ <widget class="QWidget" name="ShopInterface">
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QTreeWidget" name="shopTree">
+     <column><property name="text"><string>物品</string></property></column>
+     <column><property name="text"><string>价格</string></property></column>
+     <column><property name="text"><string>描述</string></property></column>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="purchaseBtn">
+     <property name="text"><string>购买选中</string></property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

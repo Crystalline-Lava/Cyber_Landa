@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CustomizationPanel</class>
+ <widget class="QWidget" name="CustomizationPanel">
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QTabWidget" name="tabWidget">
+     <widget class="QWidget" name="tabTask">
+      <attribute name="title"><string>自定义任务</string></attribute>
+      <layout class="QFormLayout" name="formLayoutTask">
+       <item row="0" column="0"><widget class="QLabel" name="labelTaskTitle"><property name="text"><string>标题</string></property></widget></item>
+       <item row="0" column="1"><widget class="QLineEdit" name="taskTitleEdit"/></item>
+       <item row="1" column="0"><widget class="QLabel" name="labelTaskDesc"><property name="text"><string>描述</string></property></widget></item>
+       <item row="1" column="1"><widget class="QTextEdit" name="taskDescEdit"/></item>
+       <item row="2" column="0"><widget class="QLabel" name="labelTaskReward"><property name="text"><string>奖励</string></property></widget></item>
+       <item row="2" column="1"><widget class="QLineEdit" name="taskRewardEdit"/></item>
+       <item row="3" column="1"><widget class="QPushButton" name="createTaskBtn"><property name="text"><string>创建任务</string></property></widget></item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabAchievement">
+      <attribute name="title"><string>自定义成就</string></attribute>
+      <layout class="QFormLayout" name="formLayoutAchievement">
+       <item row="0" column="0"><widget class="QLabel" name="labelAchName"><property name="text"><string>名称</string></property></widget></item>
+       <item row="0" column="1"><widget class="QLineEdit" name="achNameEdit"/></item>
+       <item row="1" column="0"><widget class="QLabel" name="labelAchCond"><property name="text"><string>条件</string></property></widget></item>
+       <item row="1" column="1"><widget class="QTextEdit" name="achCondEdit"/></item>
+       <item row="2" column="1"><widget class="QPushButton" name="createAchievementBtn"><property name="text"><string>创建成就</string></property></widget></item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabSerendipity">
+      <attribute name="title"><string>自定义奇遇</string></attribute>
+      <layout class="QFormLayout" name="formLayoutSerendipity">
+       <item row="0" column="0"><widget class="QLabel" name="labelSerName"><property name="text"><string>名称</string></property></widget></item>
+       <item row="0" column="1"><widget class="QLineEdit" name="serNameEdit"/></item>
+       <item row="1" column="0"><widget class="QLabel" name="labelSerWeight"><property name="text"><string>权重</string></property></widget></item>
+       <item row="1" column="1"><widget class="QLineEdit" name="serWeightEdit"/></item>
+       <item row="2" column="1"><widget class="QPushButton" name="createSerendipityBtn"><property name="text"><string>创建奇遇</string></property></widget></item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

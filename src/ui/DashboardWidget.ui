@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DashboardWidget</class>
+ <widget class="QWidget" name="DashboardWidget">
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="statsLabel">
+     <property name="text"><string>等级/金币</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="chartContainer">
+     <layout class="QVBoxLayout" name="chartLayout"/>
+    </widget>
+   </item>
+   <item>
+    <widget class="QListWidget" name="activityList"/>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

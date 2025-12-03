@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>兰大成长模拟 - 主界面</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="horizontalLayout">
+    <item>
+     <widget class="QWidget" name="navPanel">
+      <layout class="QVBoxLayout" name="verticalLayout">
+       <item>
+        <widget class="QLabel" name="profileLabel">
+         <property name="text">
+          <string>学生档案</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="notificationLabel">
+         <property name="text">
+          <string>实时通知区域</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="dashboardBtn">
+         <property name="text">
+          <string>仪表盘</string>
+         </property>
+        </widget>
+       </item>
+       <item><widget class="QPushButton" name="taskBtn"><property name="text"><string>任务</string></property></widget></item>
+       <item><widget class="QPushButton" name="achievementBtn"><property name="text"><string>成就</string></property></widget></item>
+       <item><widget class="QPushButton" name="growthBtn"><property name="text"><string>成长</string></property></widget></item>
+       <item><widget class="QPushButton" name="shopBtn"><property name="text"><string>商店</string></property></widget></item>
+       <item><widget class="QPushButton" name="logBtn"><property name="text"><string>日志</string></property></widget></item>
+       <item><widget class="QPushButton" name="customBtn"><property name="text"><string>自定义</string></property></widget></item>
+       <item><spacer name="verticalSpacer">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeType"><enum>QSizePolicy::Expanding</enum></property>
+        </spacer></item>
+       <item>
+        <widget class="QPushButton" name="skipTutorialBtn">
+         <property name="text">
+          <string>跳过教程</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QStackedWidget" name="stackedWidget">
+      <property name="minimumSize">
+       <size>
+        <width>900</width>
+        <height>0</height>
+       </size>
+      </property>
+      <widget class="QWidget" name="pageDashboard"/>
+      <widget class="QWidget" name="pageTask"/>
+      <widget class="QWidget" name="pageAchievement"/>
+      <widget class="QWidget" name="pageGrowth"/>
+      <widget class="QWidget" name="pageShop"/>
+      <widget class="QWidget" name="pageLog"/>
+      <widget class="QWidget" name="pageCustom"/>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

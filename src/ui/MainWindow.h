@@ -54,8 +54,8 @@ public:
                rove::data::LogManager& logManager,
                rove::data::ShopManager& shopManager,
                rove::data::InventoryManager& inventoryManager,
-               rove::simulation::SerendipityEngine& serendipityEngine,
-               rove::analysis::GrowthVisualizer& growthVisualizer,
+               rove::data::SerendipityEngine& serendipityEngine,
+               rove::GrowthVisualizer& growthVisualizer,
                QWidget* parent = nullptr);
     ~MainWindow() override;
 
@@ -106,8 +106,8 @@ private:
     rove::data::LogManager& m_logManager;
     rove::data::ShopManager& m_shopManager;
     rove::data::InventoryManager& m_inventoryManager;
-    rove::simulation::SerendipityEngine& m_serendipityEngine;
-    rove::analysis::GrowthVisualizer& m_growthVisualizer;
+    rove::data::SerendipityEngine& m_serendipityEngine;
+    rove::GrowthVisualizer& m_growthVisualizer;
 
     DashboardWidget* m_dashboard{nullptr};
     TaskView* m_taskView{nullptr};
@@ -123,3 +123,4 @@ private:
 };
 
 #endif  // MAINWINDOW_H
+

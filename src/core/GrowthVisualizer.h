@@ -14,7 +14,11 @@
 #include "GrowthSnapshot.h"
 #include "LogEntry.h"
 
-namespace rove::data {
+// 使用 Qt Charts 命名空间
+namespace QtCharts {}
+using namespace QtCharts;
+
+namespace rove {
 
 /**
  * @class GrowthVisualizer
@@ -27,20 +31,20 @@ public:
     /**
      * @brief 绘制六维属性雷达图，采用 QPolarChart 美化展示。
      */
-    [[nodiscard]] std::unique_ptr<QtCharts::QChart> buildRadarChart(const GrowthSnapshot& snapshot) const;
+    [[nodiscard]] std::unique_ptr<QChart> buildRadarChart(const data::GrowthSnapshot& snapshot) const;
 
     /**
      * @brief 绘制等级与成长值折线图，同时标记里程碑与宽恕隐藏点。
      */
-    [[nodiscard]] std::unique_ptr<QtCharts::QChart> buildGrowthLineChart(
-        const std::vector<GrowthSnapshot>& snapshots,
-        const std::vector<LogEntry>& milestones,
+    [[nodiscard]] std::unique_ptr<QChart> buildGrowthLineChart(
+        const std::vector<data::GrowthSnapshot>& snapshots,
+        const std::vector<data::LogEntry>& milestones,
         const std::set<int>& forgivenIds) const;
 
     /**
      * @brief 导出可视化使用的数据为 CSV 字符串，便于教师留档。
      */
-    [[nodiscard]] QString exportCsv(const std::vector<GrowthSnapshot>& snapshots) const;
+    [[nodiscard]] QString exportCsv(const std::vector<data::GrowthSnapshot>& snapshots) const;
 
 private:
     GrowthVisualizer() = default;
@@ -49,14 +53,14 @@ private:
      * @param snapshots 成长快照序列，按时间排序。
      * @return QLineSeries* 指向等级折线序列的指针，需由调用者管理其生命周期。
      */
-    QtCharts::QLineSeries* buildLevelSeries(const std::vector<GrowthSnapshot>& snapshots) const;
+    QLineSeries* buildLevelSeries(const std::vector<data::GrowthSnapshot>& snapshots) const;
 
     /**
      * @brief 构建成长值（Growth）随时间变化的折线序列。
      * @param snapshots 成长快照序列，按时间排序。
      * @return QLineSeries* 指向成长值折线序列的指针，需由调用者管理其生命周期。
      */
-    QtCharts::QLineSeries* buildGrowthSeries(const std::vector<GrowthSnapshot>& snapshots) const;
+    QLineSeries* buildGrowthSeries(const std::vector<data::GrowthSnapshot>& snapshots) const;
 
     /**
      * @brief 构建里程碑与宽恕点的散点序列，用于在成长折线图中标记特殊事件。
@@ -65,11 +69,12 @@ private:
      * @param forgivenIds 被宽恕隐藏的里程碑 ID 集合。
      * @return QScatterSeries* 指向散点序列的指针，需由调用者管理其生命周期。
      */
-    QtCharts::QScatterSeries* buildMilestoneSeries(const std::vector<LogEntry>& milestones,
-                                                   const std::vector<GrowthSnapshot>& snapshots,
+    QScatterSeries* buildMilestoneSeries(const std::vector<data::LogEntry>& milestones,
+                                                   const std::vector<data::GrowthSnapshot>& snapshots,
                                                    const std::set<int>& forgivenIds) const;
 };
 
 }  // namespace rove::data
 
 #endif  // GROWTHVISUALIZER_H
+

@@ -26,7 +26,7 @@ class CustomizationPanel : public QWidget {
 public:
     CustomizationPanel(rove::data::TaskManager& taskManager,
                        rove::data::AchievementManager& achievementManager,
-                       rove::simulation::SerendipityEngine& engine,
+                       rove::data::SerendipityEngine& engine,
                        QWidget* parent = nullptr);
     ~CustomizationPanel() override;
 
@@ -57,7 +57,9 @@ private:
     std::unique_ptr<Ui::CustomizationPanel> ui;
     rove::data::TaskManager& m_taskManager;
     rove::data::AchievementManager& m_achievementManager;
-    rove::simulation::SerendipityEngine& m_engine;
+    rove::data::SerendipityEngine& m_engine;
 };
 
 #endif  // CUSTOMIZATIONPANEL_H
+
+

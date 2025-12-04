@@ -27,7 +27,7 @@ constexpr const char* kAttributeSpentKey = "attribute_spent";
  * 说明：Manager 本身不拥有数据库，遵循 RAII，避免重复关闭句柄。
  */
 UserManager::UserManager(DatabaseManager& database)
-    : m_database(database), m_activeUser(), m_signalProxy(std::make_unique<SignalProxy>()) {}
+    : m_database(database), m_activeUser(), m_signalProxy(std::make_unique<UserManagerSignalProxy>()) {}
 
 /**
  * @brief Validate credentials and populate in-memory session.
@@ -158,7 +158,7 @@ void UserManager::refreshFromDatabase() {
     m_activeUser = hydrateUser(*record);
 }
 
-UserManager::SignalProxy* UserManager::signalProxy() const noexcept { return m_signalProxy.get(); }
+UserManagerSignalProxy* UserManager::signalProxy() const noexcept { return m_signalProxy.get(); }
 
 /**
  * @brief Convert DatabaseManager::UserRecord -> domain object with attributes/stats.

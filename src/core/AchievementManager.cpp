@@ -149,13 +149,13 @@ AchievementManager::AchievementManager(DatabaseManager& database,
       m_galleryIndex(),
       m_mutex() {
     if (auto* proxy = m_taskManager.signalProxy()) {
-        QObject::connect(proxy, &TaskManager::SignalProxy::taskCompleted, this, &AchievementManager::onTaskCompleted);
-        QObject::connect(proxy, &TaskManager::SignalProxy::taskProgressed, this, &AchievementManager::onTaskProgressed);
+        QObject::connect(proxy, &TaskManagerSignalProxy::taskCompleted, this, &AchievementManager::onTaskCompleted);
+        QObject::connect(proxy, &TaskManagerSignalProxy::taskProgressed, this, &AchievementManager::onTaskProgressed);
     }
     if (auto* proxy = m_userManager.signalProxy()) {
-        QObject::connect(proxy, &UserManager::SignalProxy::levelChanged, this, &AchievementManager::onUserLevelChanged);
-        QObject::connect(proxy, &UserManager::SignalProxy::prideChanged, this, &AchievementManager::onPrideChanged);
-        QObject::connect(proxy, &UserManager::SignalProxy::coinsChanged, this, &AchievementManager::onCoinsChanged);
+        QObject::connect(proxy, &UserManagerSignalProxy::levelChanged, this, &AchievementManager::onUserLevelChanged);
+        QObject::connect(proxy, &UserManagerSignalProxy::prideChanged, this, &AchievementManager::onPrideChanged);
+        QObject::connect(proxy, &UserManagerSignalProxy::coinsChanged, this, &AchievementManager::onCoinsChanged);
     }
 }
 
@@ -692,3 +692,4 @@ void AchievementManager::replaceConditionValue(Achievement& achievement,
 }
 
 }  // namespace rove::data
+

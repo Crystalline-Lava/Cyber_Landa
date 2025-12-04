@@ -21,7 +21,7 @@ class LogBrowser : public QWidget {
     Q_OBJECT
 
 public:
-    LogBrowser(rove::logging::LogManager& manager, QWidget* parent = nullptr);
+    LogBrowser(rove::data::LogManager& manager, QWidget* parent = nullptr);
     ~LogBrowser() override;
 
 public slots:
@@ -40,11 +40,13 @@ private:
     /**
      * @brief 用管理器数据填充表格。
      */
-    void populateTable(const std::vector<rove::logging::LogEntry>& entries);
+    void populateTable(const std::vector<rove::data::LogEntry>& entries);
 
     std::unique_ptr<Ui::LogBrowser> ui;
-    rove::logging::LogManager& m_manager;
+    rove::data::LogManager& m_manager;
     QTableWidget* m_table{nullptr};
 };
 
 #endif  // LOGBROWSER_H
+
+

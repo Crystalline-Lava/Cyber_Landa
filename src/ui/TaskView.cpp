@@ -89,3 +89,5 @@ void TaskView::populateTree(const std::vector<rove::data::Task>& tasks) {
     }
     m_taskTree->resizeColumnToContents(0);
 }
+
+

@@ -7,25 +7,28 @@
 #include <limits>
 #include <cmath>
 
-namespace rove::data {
+namespace QtCharts {}
+using namespace QtCharts;
+
+namespace rove {
 
 GrowthVisualizer& GrowthVisualizer::instance() {
     static GrowthVisualizer instance;
     return instance;
 }
 
-std::unique_ptr<QtCharts::QChart> GrowthVisualizer::buildRadarChart(const GrowthSnapshot& snapshot) const {
-    auto chart = std::make_unique<QtCharts::QPolarChart>();
+std::unique_ptr<QChart> GrowthVisualizer::buildRadarChart(const data::GrowthSnapshot& snapshot) const {
+    auto chart = std::make_unique<QPolarChart>();
     chart->setTitle(QStringLiteral("六维属性雷达图（宽恕后展示）"));
 
-    auto axisAngular = new QtCharts::QCategoryAxis(chart.get());
-    axisAngular->setLabelsPosition(QtCharts::QCategoryAxis::AxisLabelsPositionOnValue);
+    auto axisAngular = new QCategoryAxis(chart.get());
+    axisAngular->setLabelsPosition(QCategoryAxis::AxisLabelsPositionOnValue);
 
-    auto axisRadial = new QtCharts::QValueAxis(chart.get());
+    auto axisRadial = new QValueAxis(chart.get());
     axisRadial->setRange(0, snapshot.attributes().totalPoints() + 10);
     axisRadial->setLabelFormat("%d");
 
-    auto series = new QtCharts::QSplineSeries(chart.get());
+    auto series = new QSplineSeries(chart.get());
     series->setName(QStringLiteral("属性分布"));
 
     std::vector<std::pair<QString, int>> points = {
@@ -39,7 +42,7 @@ std::unique_ptr<QtCharts::QChart> GrowthVisualizer::buildRadarChart(const Growth
 
     if (points.empty()) {
         // 没有可用数据时直接返回空图表，避免除零。
-        return std::unique_ptr<QtCharts::QChart>(chart.release());
+        return std::unique_ptr<QChart>(chart.release());
     }
 
     const double step = 360.0 / static_cast<double>(points.size());
@@ -52,19 +55,19 @@ std::unique_ptr<QtCharts::QChart> GrowthVisualizer::buildRadarChart(const Growth
     series->append(360.0, points.front().second);
 
     chart->addSeries(series);
-    chart->addAxis(axisAngular, QtCharts::QPolarChart::PolarOrientationAngular);
-    chart->addAxis(axisRadial, QtCharts::QPolarChart::PolarOrientationRadial);
+    chart->addAxis(axisAngular, QPolarChart::PolarOrientationAngular);
+    chart->addAxis(axisRadial, QPolarChart::PolarOrientationRadial);
     series->attachAxis(axisAngular);
     series->attachAxis(axisRadial);
 
-    return std::unique_ptr<QtCharts::QChart>(chart.release());
+    return std::unique_ptr<QChart>(chart.release());
 }
 
-std::unique_ptr<QtCharts::QChart> GrowthVisualizer::buildGrowthLineChart(
-    const std::vector<GrowthSnapshot>& snapshots,
-    const std::vector<LogEntry>& milestones,
+std::unique_ptr<QChart> GrowthVisualizer::buildGrowthLineChart(
+    const std::vector<data::GrowthSnapshot>& snapshots,
+    const std::vector<data::LogEntry>& milestones,
     const std::set<int>& forgivenIds) const {
-    auto chart = std::make_unique<QtCharts::QChart>();
+    auto chart = std::make_unique<QChart>();
     chart->setTitle(QStringLiteral("等级与成长值曲线"));
 
     auto levelSeries = buildLevelSeries(snapshots);
@@ -75,11 +78,11 @@ std::unique_ptr<QtCharts::QChart> GrowthVisualizer::buildGrowthLineChart(
     chart->addSeries(growthSeries);
     chart->addSeries(milestoneSeries);
 
-    auto axisX = new QtCharts::QValueAxis(chart.get());
+    auto axisX = new QValueAxis(chart.get());
     axisX->setLabelFormat("%i");
     axisX->setTitleText(QStringLiteral("时间序号"));
 
-    auto axisY = new QtCharts::QValueAxis(chart.get());
+    auto axisY = new QValueAxis(chart.get());
     axisY->setLabelFormat("%i");
     axisY->setTitleText(QStringLiteral("数值"));
 
@@ -93,7 +96,7 @@ std::unique_ptr<QtCharts::QChart> GrowthVisualizer::buildGrowthLineChart(
     return chart;
 }
 
-QString GrowthVisualizer::exportCsv(const std::vector<GrowthSnapshot>& snapshots) const {
+QString GrowthVisualizer::exportCsv(const std::vector<data::GrowthSnapshot>& snapshots) const {
     std::ostringstream oss;
     oss << "timestamp,level,growth,execution,perseverance,decision,knowledge,social,pride,achievements,completed,failed,manual_logs\n";
     for (const auto& snapshot : snapshots) {
@@ -107,8 +110,8 @@ QString GrowthVisualizer::exportCsv(const std::vector<GrowthSnapshot>& snapshots
     return QString::fromStdString(oss.str());
 }
 
-QtCharts::QLineSeries* GrowthVisualizer::buildLevelSeries(const std::vector<GrowthSnapshot>& snapshots) const {
-    auto series = new QtCharts::QLineSeries();
+QLineSeries* GrowthVisualizer::buildLevelSeries(const std::vector<data::GrowthSnapshot>& snapshots) const {
+    auto series = new QLineSeries();
     series->setName(QStringLiteral("等级"));
     for (int i = 0; i < static_cast<int>(snapshots.size()); ++i) {
         series->append(i, snapshots[i].level());
@@ -116,8 +119,8 @@ QtCharts::QLineSeries* GrowthVisualizer::buildLevelSeries(const std::vector<Grow
     return series;
 }
 
-QtCharts::QLineSeries* GrowthVisualizer::buildGrowthSeries(const std::vector<GrowthSnapshot>& snapshots) const {
-    auto series = new QtCharts::QLineSeries();
+QLineSeries* GrowthVisualizer::buildGrowthSeries(const std::vector<data::GrowthSnapshot>& snapshots) const {
+    auto series = new QLineSeries();
     series->setName(QStringLiteral("成长值"));
     for (int i = 0; i < static_cast<int>(snapshots.size()); ++i) {
         series->append(i, snapshots[i].growthPoints());
@@ -125,10 +128,10 @@ QtCharts::QLineSeries* GrowthVisualizer::buildGrowthSeries(const std::vector<Gro
     return series;
 }
 
-QtCharts::QScatterSeries* GrowthVisualizer::buildMilestoneSeries(const std::vector<LogEntry>& milestones,
-                                                                 const std::vector<GrowthSnapshot>& snapshots,
+QScatterSeries* GrowthVisualizer::buildMilestoneSeries(const std::vector<data::LogEntry>& milestones,
+                                                                 const std::vector<data::GrowthSnapshot>& snapshots,
                                                                  const std::set<int>& forgivenIds) const {
-    auto series = new QtCharts::QScatterSeries();
+    auto series = new QScatterSeries();
     series->setName(QStringLiteral("里程碑"));
     series->setMarkerSize(10.0);
 
@@ -154,4 +157,6 @@ QtCharts::QScatterSeries* GrowthVisualizer::buildMilestoneSeries(const std::vect
     return series;
 }
 
-}  // namespace rove::data
+}  // namespace rove
+
+

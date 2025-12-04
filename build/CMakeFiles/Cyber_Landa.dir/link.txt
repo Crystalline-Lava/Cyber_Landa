@@ -1,0 +1,3 @@
+"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E rm -f CMakeFiles\Cyber_Landa.dir/objects.a
+D:\software\Qt\Tools\mingw1310_64\bin\ar.exe qc CMakeFiles\Cyber_Landa.dir/objects.a @CMakeFiles\Cyber_Landa.dir\objects1.rsp
+D:\software\Qt\Tools\mingw1310_64\bin\c++.exe -mwindows -Wl,--whole-archive CMakeFiles\Cyber_Landa.dir/objects.a -Wl,--no-whole-archive -o Cyber_Landa.exe -Wl,--out-implib,libCyber_Landa.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\Cyber_Landa.dir\linkLibs.rsp

@@ -2,9 +2,13 @@
 #include "ui_DashboardWidget.h"
 
 #include <QtCharts/QCategoryAxis>
-#include <QtCharts/QRadarSeries>
+#include <QtCharts/QSplineSeries>
+#include <QtCharts/QValueAxis>
+
 #include <QVBoxLayout>
 
+// Qt6 charts namespace handling
+namespace QtCharts {}
 using namespace QtCharts;
 
 /**
@@ -26,7 +30,7 @@ void DashboardWidget::renderUser(const rove::data::User& user) {
         QStringLiteral("等级 %1 | 金币 %2 | 成就 %3")
             .arg(user.level())
             .arg(user.coins())
-            .arg(user.achievementsUnlocked()));
+            .arg(user.progress().achievementsUnlocked));
     updateRadar(user.attributes());
 }
 
@@ -51,11 +55,12 @@ void DashboardWidget::buildRadarChart() {
     m_polarChart->addAxis(radial, QPolarChart::PolarOrientationRadial);
 
     auto* angular = new QCategoryAxis();
-    angular->append(QStringLiteral("学术"), 1);
-    angular->append(QStringLiteral("社交"), 2);
-    angular->append(QStringLiteral("体魄"), 3);
-    angular->append(QStringLiteral("艺术"), 4);
-    angular->append(QStringLiteral("奉献"), 5);
+    angular->append(QStringLiteral("行动"), 1);
+    angular->append(QStringLiteral("毅力"), 2);
+    angular->append(QStringLiteral("决断"), 3);
+    angular->append(QStringLiteral("知识"), 4);
+    angular->append(QStringLiteral("社交"), 5);
+    angular->append(QStringLiteral("自豪"), 6);
     m_polarChart->addAxis(angular, QPolarChart::PolarOrientationAngular);
 
     m_chartView = new QChartView(m_polarChart, this);
@@ -66,12 +71,13 @@ void DashboardWidget::buildRadarChart() {
  * @brief 更新雷达图数据集。
  */
 void DashboardWidget::updateRadar(const rove::data::User::AttributeSet& attrs) {
-    auto series = new QRadarSeries();
-    series->append(1, attrs.academic);
-    series->append(2, attrs.social);
-    series->append(3, attrs.physical);
-    series->append(4, attrs.art);
-    series->append(5, attrs.volunteer);
+    auto series = new QSplineSeries();
+    series->append(1, attrs.execution);
+    series->append(2, attrs.perseverance);
+    series->append(3, attrs.decision);
+    series->append(4, attrs.knowledge);
+    series->append(5, attrs.social);
+    series->append(6, attrs.pride);
     series->setName(QStringLiteral("当前属性"));
 
     const auto allSeries = m_polarChart->series();
@@ -84,3 +90,7 @@ void DashboardWidget::updateRadar(const rove::data::User::AttributeSet& attrs) {
         series->attachAxis(axis);
     }
 }
+
+
+
+

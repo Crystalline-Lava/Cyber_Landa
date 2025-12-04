@@ -14,6 +14,22 @@
 namespace rove::data {
 
 /**
+ * @brief Signal proxy for UserManager to emit Qt signals
+ * 中文：UserManager 的信号代理类，用于发射 Qt 信号
+ */
+class UserManagerSignalProxy : public QObject {
+    Q_OBJECT
+
+public:
+    explicit UserManagerSignalProxy(QObject* parent = nullptr) : QObject(parent) {}
+
+signals:
+    void levelChanged(int newLevel);
+    void prideChanged(int newPride);
+    void coinsChanged(int newCoins);
+};
+
+/**
  * @class UserManager
  * @brief Coordinates session management, progression logic, and persistence.
  * 中文：UserManager 负责会话管理、成长逻辑以及与数据库之间的数据同步。
@@ -23,17 +39,6 @@ namespace rove::data {
  */
 class UserManager final {
 public:
-    class SignalProxy : public QObject {
-        Q_OBJECT
-
-    public:
-        explicit SignalProxy(QObject* parent = nullptr) : QObject(parent) {}
-
-    signals:
-        void levelChanged(int newLevel);
-        void prideChanged(int newPride);
-        void coinsChanged(int newCoins);
-    };
 
     /**
      * @brief Construct manager with dependency injection of DatabaseManager singleton.
@@ -142,7 +147,7 @@ public:
     /**
      * @brief 暴露信号代理，供成就系统监听等级/自豪感等事件。
      */
-    [[nodiscard]] SignalProxy* signalProxy() const noexcept;
+    [[nodiscard]] UserManagerSignalProxy* signalProxy() const noexcept;
 
 private:
     /**
@@ -183,7 +188,7 @@ private:
 
     DatabaseManager& m_database;
     std::optional<User> m_activeUser;  //!< RAII session object. 中文：RAII 管理的会话对象。
-    std::unique_ptr<SignalProxy> m_signalProxy;
+    std::unique_ptr<UserManagerSignalProxy> m_signalProxy;
 };
 
 }  // namespace rove::data

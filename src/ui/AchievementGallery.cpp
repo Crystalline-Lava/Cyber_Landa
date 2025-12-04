@@ -42,12 +42,15 @@ QWidget* AchievementGallery::createCard(const rove::data::Achievement& achieveme
     auto* layout = new QVBoxLayout(card);
     auto* nameLabel = new QLabel(QString::fromStdString(achievement.name()), card);
     auto* descLabel = new QLabel(QString::fromStdString(achievement.description()), card);
-    auto* statusLabel = new QLabel(achievement.isUnlocked() ? QStringLiteral("已解锁")
+    auto* statusLabel = new QLabel(achievement.unlocked() ? QStringLiteral("已解锁")
                                                            : QStringLiteral("未解锁"),
                                   card);
     layout->addWidget(nameLabel);
     layout->addWidget(descLabel);
     layout->addWidget(statusLabel);
-    card->setStyleSheet(achievement.isUnlocked() ? "background:#e6ffe6;" : "background:#f2f2f2;");
+    card->setStyleSheet(achievement.unlocked() ? "background:#e6ffe6;" : "background:#f2f2f2;");
     return card;
 }
+
+
+

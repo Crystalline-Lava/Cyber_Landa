@@ -1,0 +1,5 @@
+set(__QT_DEPLOY_TARGET_sqlite3_lib_FILE D:/GitHub/Cyber_Landa/Cyber_Landa/build/libsqlite3_lib.a)
+set(__QT_DEPLOY_TARGET_sqlite3_lib_TYPE STATIC_LIBRARY)
+set(__QT_DEPLOY_TARGET_Cyber_Landa_FILE D:/GitHub/Cyber_Landa/Cyber_Landa/build/Cyber_Landa.exe)
+set(__QT_DEPLOY_TARGET_Cyber_Landa_TYPE EXECUTABLE)
+set(__QT_DEPLOY_TARGET_Cyber_Landa_RUNTIME_DLLS D:/software/Qt/6.9.2/mingw_64/bin/Qt6Charts.dll;D:/software/Qt/6.9.2/mingw_64/bin/Qt6Sql.dll;D:/software/Qt/6.9.2/mingw_64/bin/Qt6OpenGLWidgets.dll;D:/software/Qt/6.9.2/mingw_64/bin/Qt6Widgets.dll;D:/software/Qt/6.9.2/mingw_64/bin/Qt6OpenGL.dll;D:/software/Qt/6.9.2/mingw_64/bin/Qt6Gui.dll;D:/software/Qt/6.9.2/mingw_64/bin/Qt6Core.dll)

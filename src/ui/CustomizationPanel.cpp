@@ -9,7 +9,7 @@
 
 CustomizationPanel::CustomizationPanel(rove::data::TaskManager& taskManager,
                                        rove::data::AchievementManager& achievementManager,
-                                       rove::simulation::SerendipityEngine& engine,
+                                       rove::data::SerendipityEngine& engine,
                                        QWidget* parent)
     : QWidget(parent)
     , ui(std::make_unique<Ui::CustomizationPanel>())
@@ -72,3 +72,5 @@ void CustomizationPanel::onCreateSerendipityClicked() {
     config.buffChance = std::min(0.9, config.buffChance + weight / 100.0);
     m_engine.updateProbability(config);
 }
+
+

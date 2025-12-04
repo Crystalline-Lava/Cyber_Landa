@@ -31,7 +31,7 @@ LogManager::LogManager(DatabaseManager& database,
 }
 
 void LogManager::bindSystemEvents() {
-    QObject::connect(m_taskManager.signalProxy(), &TaskManager::SignalProxy::taskCompleted, this,
+    QObject::connect(m_taskManager.signalProxy(), &TaskManagerSignalProxy::taskCompleted, this,
                      [this](int taskId, int, int difficulty) {
                          std::ostringstream oss;
                          oss << "任务完成：" << taskId << "，难度" << difficulty << "星";
@@ -43,7 +43,7 @@ void LogManager::bindSystemEvents() {
                          oss << "解锁成就：" << achievementId;
                          recordAutoLog(LogEntry::LogType::Milestone, oss.str(), achievementId, {}, 0, "AchievementUnlocked");
                      });
-    QObject::connect(m_userManager.signalProxy(), &UserManager::SignalProxy::levelChanged, this,
+    QObject::connect(m_userManager.signalProxy(), &UserManagerSignalProxy::levelChanged, this,
                      [this](int newLevel) {
                          std::ostringstream oss;
                          oss << "等级提升至 " << newLevel;
@@ -241,3 +241,4 @@ std::optional<std::string> LogManager::toIso(const std::optional<QDateTime>& tim
 }
 
 }  // namespace rove::data
+

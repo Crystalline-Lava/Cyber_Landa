@@ -31,8 +31,8 @@ MainWindow::MainWindow(rove::data::UserManager& userManager,
                        rove::data::LogManager& logManager,
                        rove::data::ShopManager& shopManager,
                        rove::data::InventoryManager& inventoryManager,
-                       rove::simulation::SerendipityEngine& serendipityEngine,
-                       rove::analysis::GrowthVisualizer& growthVisualizer,
+                       rove::data::SerendipityEngine& serendipityEngine,
+                       rove::GrowthVisualizer& growthVisualizer,
                        QWidget* parent)
     : QMainWindow(parent)
     , ui(std::make_unique<Ui::MainWindow>())
@@ -111,11 +111,11 @@ void MainWindow::setupNavigation() {
     navLayout->insertWidget(navLayout->count() - 1, new QLabel(QStringLiteral("今日心情"), ui->navPanel));
     navLayout->insertWidget(navLayout->count() - 1, moodCombo);
     connect(moodCombo, &QComboBox::currentTextChanged, [this](const QString& mood) {
-        rove::logging::LogEntry::MoodTag tag = rove::logging::LogEntry::MoodTag::Neutral;
+        rove::data::LogEntry::MoodTag tag = rove::data::LogEntry::MoodTag::Neutral;
         if (mood.contains(QStringLiteral("开心"))) {
-            tag = rove::logging::LogEntry::MoodTag::Happy;
+            tag = rove::data::LogEntry::MoodTag::Happy;
         } else if (mood.contains(QStringLiteral("低落"))) {
-            tag = rove::logging::LogEntry::MoodTag::Sad;
+            tag = rove::data::LogEntry::MoodTag::Sad;
         }
         m_logManager.recordManualLog(mood.toStdString(), tag);
         showRealtimeNotification(QStringLiteral("已记录心情：%1").arg(mood));
@@ -142,7 +142,13 @@ void MainWindow::setupNavigation() {
         inventoryTable->setRowCount(static_cast<int>(items.size()));
         int row = 0;
         for (const auto& it : items) {
-            inventoryTable->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(it.name())));
+            // Get item name from ShopManager using itemId
+            QString itemName = QStringLiteral("未知物品");
+            auto shopItem = m_shopManager.findItem(it.itemId());
+            if (shopItem) {
+                itemName = QString::fromStdString(shopItem->name());
+            }
+            inventoryTable->setItem(row, 0, new QTableWidgetItem(itemName));
             inventoryTable->setItem(row, 1, new QTableWidgetItem(QString::number(it.quantity())));
             inventoryTable->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(it.specialAttributes())));
             ++row;
@@ -155,9 +161,12 @@ void MainWindow::setupNavigation() {
 void MainWindow::connectSignals() {
     connect(m_taskView, &TaskView::taskCompletionRequested, this, [this](int taskId) {
         m_taskManager.markTaskCompleted(taskId);
-        m_logManager.recordAutoLog(rove::logging::LogEntry::LogType::Task,
+        m_logManager.recordAutoLog(rove::data::LogEntry::LogType::Event,
                                    QStringLiteral("任务完成").toStdString(),
-                                   {});
+                                   taskId,
+                                   {},
+                                   0,
+                                   std::string{});
         m_tutorialManager->markStepDone(QStringLiteral("createTask"));
         refreshDashboard();
     });
@@ -179,7 +188,7 @@ void MainWindow::connectSignals() {
             this,
             [this](int) { showRealtimeNotification(QStringLiteral("新的成就已解锁！")); });
 
-    connect(m_userManager.signalProxy(), &rove::data::UserManager::SignalProxy::coinsChanged, this, [this](int) {
+    connect(m_userManager.signalProxy(), &rove::data::UserManagerSignalProxy::coinsChanged, this, [this](int) {
         refreshDashboard();
     });
 
@@ -236,3 +245,5 @@ void MainWindow::refreshDashboard() {
 void MainWindow::handleTutorialFinished() {
     showRealtimeNotification(QStringLiteral("教程完成，奖励金币已发放"));
 }
+
+

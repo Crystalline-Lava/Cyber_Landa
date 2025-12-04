@@ -28,7 +28,7 @@ TaskManager::TaskManager(DatabaseManager& database, UserManager& userManager)
       m_dailyTimer(),
       m_weeklyTimer(),
       m_timerContext(),
-      m_signalProxy(std::make_unique<SignalProxy>()),
+      m_signalProxy(std::make_unique<TaskManagerSignalProxy>()),
       m_mutex() {
     m_dailyTimer = std::make_unique<QTimer>();
     m_weeklyTimer = std::make_unique<QTimer>();
@@ -212,7 +212,7 @@ void TaskManager::resetWeeklyTasks() {
     enforceSemesterDeadlinesLocked();
 }
 
-TaskManager::SignalProxy* TaskManager::signalProxy() const noexcept { return m_signalProxy.get(); }
+TaskManagerSignalProxy* TaskManager::signalProxy() const noexcept { return m_signalProxy.get(); }
 
 /**
  * @brief 将数据库记录灌入内存缓存，同时重建统计数据。

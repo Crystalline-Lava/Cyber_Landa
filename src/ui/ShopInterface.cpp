@@ -58,3 +58,5 @@ void ShopInterface::populate() {
     }
     m_tree->expandAll();
 }
+
+

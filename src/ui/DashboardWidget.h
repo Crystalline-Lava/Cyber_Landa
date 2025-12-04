@@ -48,9 +48,17 @@ private:
      */
     void buildRadarChart();
 
+    /**
+     * @brief 更新雷达图数据集。
+     * @param attrs 属性集合。
+     */
+    void updateRadar(const rove::data::User::AttributeSet& attrs);
+
     std::unique_ptr<Ui::DashboardWidget> ui;
-    QtCharts::QPolarChart* m_polarChart{nullptr};
-    QtCharts::QChartView* m_chartView{nullptr};
+    QPolarChart* m_polarChart{nullptr};
+    QChartView* m_chartView{nullptr};
 };
 
 #endif  // DASHBOARDWIDGET_H
+
+

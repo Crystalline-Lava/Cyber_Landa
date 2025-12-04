@@ -60,3 +60,5 @@ void TutorialManager::advance() {
         emit tutorialHintChanged(currentHint());
     }
 }
+
+

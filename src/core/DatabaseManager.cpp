@@ -137,7 +137,7 @@ void DatabaseManager::ensureUserTable() {
         "password TEXT NOT NULL,"
         "level INTEGER NOT NULL DEFAULT 1,"
         "currency INTEGER NOT NULL DEFAULT 0,"
-        "attributes TEXT NOT NULL DEFAULT '{}'");";
+        "attributes TEXT NOT NULL DEFAULT '{}')";
 
     executeNonQuery(sql);
 
@@ -190,7 +190,7 @@ void DatabaseManager::ensureTaskTable() {
         "custom_settings TEXT NOT NULL DEFAULT '{}',"
         "forgiveness_coupons INTEGER NOT NULL DEFAULT 0,"
         "progress_value INTEGER NOT NULL DEFAULT 0,"
-        "progress_goal INTEGER NOT NULL DEFAULT 100");";
+        "progress_goal INTEGER NOT NULL DEFAULT 100)";
     executeNonQuery(sql);
 }
 
@@ -218,7 +218,7 @@ void DatabaseManager::ensureAchievementTable() {
         "conditions TEXT NOT NULL,"
         "gallery_group TEXT NOT NULL DEFAULT 'default',"
         "created_at TEXT NOT NULL,"
-        "special_metadata TEXT NOT NULL DEFAULT ''");";
+        "special_metadata TEXT NOT NULL DEFAULT '')";
     executeNonQuery(sql);
 }
 
@@ -1535,6 +1535,7 @@ DatabaseManager::InventoryRecord DatabaseManager::readInventoryRecord(sqlite3_st
     const unsigned char* notesText = sqlite3_column_text(statement, 9);
     record.notes = notesText == nullptr ? std::string() : reinterpret_cast<const char*>(notesText);
     return record;
+}
 
 /**
  * @brief 反序列化 SQLite 行为内存日志记录。
@@ -1583,6 +1584,6 @@ DatabaseManager::GrowthSnapshotRecord DatabaseManager::readGrowthSnapshotRecord(
     record.manualLogCount = sqlite3_column_int(statement, 13);
     return record;
 }
-}
 
 }  // namespace rove::data
+

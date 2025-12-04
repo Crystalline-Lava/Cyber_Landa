@@ -3,6 +3,8 @@
 
 #include <QMessageBox>
 #include <QDateTime>
+#include <QRegularExpression>
+#include <QColor>
 #include <algorithm>
 #include "../core/Task.h"
 #include "../core/Achievement.h"
@@ -53,15 +55,59 @@ void CustomizationPanel::onCreateTaskClicked() {
     m_taskManager.createTask(task);
 }
 
+/**
+ * @brief 创建自定义成就，带有最小化的输入校验与默认模板。
+ * 中文：AchievementManager 要求至少存在一条条件，否则会抛出运行时异常导致应用退出。
+ *       因此这里主动解析“条件”文本，生成一个可用的 CustomCounter 条件并捕获异常，
+ *       以提示方式反馈给学生。
+ */
 void CustomizationPanel::onCreateAchievementClicked() {
-    const auto name = ui->achNameEdit->text();
-    const auto cond = ui->achCondEdit->toPlainText();
-    emit customAchievementCreated(name, cond);
-    rove::data::Achievement ac;
-    ac.setName(name.toStdString());
-    ac.setDescription(cond.toStdString());
-    ac.setOwner("student");
-    m_achievementManager.createCustomAchievement(ac);
+    const QString name = ui->achNameEdit->text().trimmed();
+    const QString condText = ui->achCondEdit->toPlainText().trimmed();
+    if (name.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("提醒"), QStringLiteral("成就名称不能为空"));
+        return;
+    }
+
+    // 解析“条件”输入中的数值；若未找到数字则默认一次完成即可解锁。
+    bool ok = false;
+    int targetValue = condText.toInt(&ok);
+    if (!ok) {
+        QRegularExpression re("(\\d+)");
+        auto match = re.match(condText);
+        if (match.hasMatch()) {
+            targetValue = match.captured(1).toInt();
+        } else {
+            targetValue = 1;
+        }
+    }
+    targetValue = std::max(1, targetValue);
+
+    rove::data::Achievement::Condition condition;
+    condition.type = rove::data::Achievement::Condition::ConditionType::CustomCounter;
+    condition.targetValue = targetValue;
+    condition.currentValue = 0;
+    condition.metadata = condText.toStdString();
+
+    rove::data::Achievement achievement;
+    achievement.setName(name.toStdString());
+    achievement.setDescription(condText.isEmpty() ? QStringLiteral("完成一次自定义目标").toStdString()
+                                                  : condText.toStdString());
+    achievement.setProgressMode(rove::data::Achievement::ProgressMode::Incremental);
+    achievement.setRewardType(rove::data::Achievement::RewardType::NoReward);
+    achievement.setDisplayColor(QColor("#2196F3"));
+    achievement.setIconPath(":/icons/custom.png");
+    achievement.setGalleryGroup("自定义成就");
+    achievement.setConditions({condition});
+    achievement.setProgressGoal(targetValue);
+
+    emit customAchievementCreated(name, condText);
+    try {
+        m_achievementManager.createCustomAchievement(achievement);
+        QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("自定义成就已创建"));
+    } catch (const std::exception& ex) {
+        QMessageBox::critical(this, QStringLiteral("创建失败"), QString::fromStdString(ex.what()));
+    }
 }
 
 void CustomizationPanel::onCreateSerendipityClicked() {

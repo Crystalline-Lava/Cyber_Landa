@@ -15,13 +15,26 @@ AchievementGallery::AchievementGallery(rove::data::AchievementManager& manager, 
 
 AchievementGallery::~AchievementGallery() = default;
 
+/**
+ * @brief 重新加载成就网格：清理旧控件，按行列填充新卡片。
+ * 中文：当 AchievementManager 状态刷新或新增自定义成就时调用，避免残留指针导致崩溃。
+ */
 void AchievementGallery::reload() {
     const auto all = m_manager.achievements();
     while (m_grid->count() > 0) {
-        auto* item = m_grid->takeAt(0);
-        delete item->widget();
-        delete item;
+        if (auto* item = m_grid->takeAt(0)) {
+            delete item->widget();
+            delete item;
+        }
     }
+
+    if (all.empty()) {
+        auto* placeholder = new QLabel(QStringLiteral("暂无成就，先去完成任务试试吧"), this);
+        placeholder->setAlignment(Qt::AlignCenter);
+        m_grid->addWidget(placeholder, 0, 0);
+        return;
+    }
+
     int row = 0;
     int col = 0;
     for (const auto& ac : all) {

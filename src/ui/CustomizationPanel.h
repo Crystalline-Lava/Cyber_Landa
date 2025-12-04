@@ -47,8 +47,19 @@ signals:
     void customSerendipityCreated(const QString& name, int weight);
 
 private slots:
+    /**
+     * @brief 处理“创建任务”按钮点击：根据表单生成 Task 并交给 TaskManager 持久化。
+     */
     void onCreateTaskClicked();
+
+    /**
+     * @brief 处理“创建成就”按钮点击：校验输入后生成具备默认条件的自定义成就。
+     */
     void onCreateAchievementClicked();
+
+    /**
+     * @brief 处理“创建奇遇”按钮点击：更新奇遇权重配置。
+     */
     void onCreateSerendipityClicked();
 
 private:

@@ -553,7 +553,7 @@ void DatabaseManager::seedDefaultAchievements() {
         const std::string modeText = seed.progressMode == Achievement::ProgressMode::Incremental ? "Incremental"
                                                                                               : "Milestone";
         sqlite3_bind_text(insertStmt.get(), 8, modeText.c_str(), -1, SQLITE_TRANSIENT);
-        const int progressGoal = std::max(1, static_cast<int>(seed.conditions.size()) == 1
+        const int progressGoal = std::max(1, seed.conditions.size() == 1
                                                  ? seed.conditions.front().targetValue
                                                  : std::accumulate(seed.conditions.begin(),
                                                                    seed.conditions.end(),
@@ -597,6 +597,7 @@ void DatabaseManager::seedDefaultShopItems() {
     }
 
     std::vector<ShopItem> seeds;
+    std::vector<int> itemIds;  // Store IDs for cross-referencing
 
     ShopItem merch;
     merch.setName("校园周边礼包");
@@ -624,6 +625,15 @@ void DatabaseManager::seedDefaultShopItems() {
     restCard.setUsageConditions("当周有效，避免与宽恕券叠加使用。");
     seeds.push_back(restCard);
 
+    // Insert items and capture IDs for cross-referencing
+    for (auto& item : seeds) {
+        // insertShopItem throws on failure, so we just need to call it
+        // and let exceptions propagate. The return value is the inserted row ID.
+        int itemId = insertShopItem(item.toRecord());
+        itemIds.push_back(itemId);
+    }
+
+    // Now create lucky bag with proper reference to restCard
     ShopItem luckyBag;
     luckyBag.setName("兰大幸运盲盒");
     luckyBag.setDescription("随机掉落兰大币、成长值或额外道具，增添惊喜。");
@@ -650,20 +660,15 @@ void DatabaseManager::seedDefaultShopItems() {
 
     ShopItem::LuckyBagReward rewardCoupon;
     rewardCoupon.type = ShopItem::LuckyBagReward::RewardType::ShopItem;
-    rewardCoupon.referenceItemId = -1;
+    rewardCoupon.referenceItemId = itemIds[1];  // Reference to restCard (second item)
     rewardCoupon.amount = 1;
     rewardCoupon.probability = 0.5;
     rewardCoupon.description = "额外获取一张自习室休息日卡";
     rewards.push_back(rewardCoupon);
     luckyBag.setLuckyRewards(rewards);
-    seeds.push_back(luckyBag);
-
-    for (auto& item : seeds) {
-        rc = insertShopItem(item.toRecord());
-        if (rc < 0) {
-            throw std::runtime_error(buildErrorMessage("Failed to seed shop items", m_db.get()));
-        }
-    }
+    
+    // Insert the lucky bag
+    insertShopItem(luckyBag.toRecord());
 }
 
 /**

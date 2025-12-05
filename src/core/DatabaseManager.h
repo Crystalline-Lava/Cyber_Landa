@@ -475,6 +475,9 @@ private:
     [[nodiscard]] InventoryRecord readInventoryRecord(sqlite3_stmt* statement) const;
     [[nodiscard]] LogRecord readLogRecord(sqlite3_stmt* statement) const;
     [[nodiscard]] GrowthSnapshotRecord readGrowthSnapshotRecord(sqlite3_stmt* statement) const;
+    void seedDefaultTasks();
+    void seedDefaultAchievements();
+    void seedDefaultShopItems();
 
     DatabaseHandle m_db;
     std::string m_databasePath;

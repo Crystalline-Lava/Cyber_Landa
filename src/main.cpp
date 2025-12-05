@@ -59,6 +59,9 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
+        // 预加载系统成就，确保画廊与奖励逻辑立即可用。
+        achievementManager.refreshFromDatabase();
+
         // 创建主窗口
         MainWindow mainWindow(
             userManager,

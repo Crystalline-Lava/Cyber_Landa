@@ -1,7 +1,14 @@
 #include "DatabaseManager.h"
 
+#include <QDateTime>
+
 #include <sstream>
 #include <stdexcept>
+#include <numeric>
+
+#include "Achievement.h"
+#include "ShopItem.h"
+#include "Task.h"
 
 namespace rove::data {
 
@@ -103,6 +110,9 @@ void DatabaseManager::initialize(const std::string& databasePath) {
     ensureLogTable();
     ensureForgivenLogTable();
     ensureGrowthSnapshotTable();
+    seedDefaultTasks();
+    seedDefaultAchievements();
+    seedDefaultShopItems();
     m_initialized = true;
 }
 
@@ -331,6 +341,329 @@ void DatabaseManager::ensureGrowthSnapshotTable() {
         " );";
     executeNonQuery(sql);
     executeNonQuery("CREATE INDEX IF NOT EXISTS idx_growth_snapshots_timestamp ON growth_snapshots(timestamp);");
+}
+
+/**
+ * @brief 预置教学示例用的任务列表，避免界面空白。
+ * 中文：应用首次启动时插入日常、周常、学期与自定义任务各一批，便于老师演示奖励与进度逻辑。
+ */
+void DatabaseManager::seedDefaultTasks() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    const std::string countSql = "SELECT COUNT(1) FROM tasks";
+    auto countStmt = prepareStatement(countSql);
+    int rc = sqlite3_step(countStmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to count tasks", m_db.get()));
+    }
+    if (sqlite3_column_int(countStmt.get(), 0) > 0) {
+        return;  // 已有任务则不重复插入。
+    }
+
+    struct TaskSeed {
+        std::string name;
+        std::string description;
+        Task::TaskType type;
+        int difficulty = 1;
+        int deadlineOffsetDays = 1;
+        int coins = 0;
+        int growth = 0;
+        std::string attributeReward;
+        int forgiveness = 0;
+        int progressGoal = 1;
+    };
+
+    const std::vector<TaskSeed> seeds = {
+        {"晨读 30 分钟", "在图书馆完成一段英文原版阅读，提升自律。", Task::TaskType::Daily, 2, 1, 20, 15,
+         "execution=1;perseverance=0;decision=0;knowledge=2;social=0;pride=0", 0, 1},
+        {"操场跑 3 公里", "保持锻炼习惯，完成基础耐力训练。", Task::TaskType::Daily, 3, 1, 25, 18,
+         "execution=1;perseverance=1;decision=0;knowledge=0;social=0;pride=0", 0, 1},
+        {"周项目研讨", "与小组讨论课程项目方案，提交会议纪要。", Task::TaskType::Weekly, 3, 7, 80, 60,
+         "execution=0;perseverance=1;decision=1;knowledge=2;social=2;pride=0", 1, 1},
+        {"学期科研训练", "在导师指导下完成一次小型实验并整理报告。", Task::TaskType::Semester, 4, 90, 200, 180,
+         "execution=1;perseverance=2;decision=1;knowledge=3;social=1;pride=1", 2, 1},
+        {"自定义兴趣练习", "记录一次社团活动或个人兴趣练习。", Task::TaskType::Custom, 1, 14, 30, 25,
+         "execution=0;perseverance=1;decision=0;knowledge=1;social=1;pride=0", 0, 100}};
+
+    const std::string insertSql =
+        "INSERT INTO tasks (name, description, type, difficulty, deadline, completed, coin_reward, growth_reward, "
+        "attribute_reward, bonus_streak, custom_settings, forgiveness_coupons, progress_value, progress_goal) "
+        "VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 0, '{}', ?, 0, ?)";
+
+    for (const auto& seed : seeds) {
+        auto insertStmt = prepareStatement(insertSql);
+        const std::string deadlineIso =
+            QDateTime::currentDateTimeUtc().addDays(seed.deadlineOffsetDays).toString(Qt::ISODate).toStdString();
+        sqlite3_bind_text(insertStmt.get(), 1, seed.name.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt.get(), 2, seed.description.c_str(), -1, SQLITE_TRANSIENT);
+        const std::string typeText = Task::typeToString(seed.type);
+        sqlite3_bind_text(insertStmt.get(), 3, typeText.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(insertStmt.get(), 4, seed.difficulty);
+        sqlite3_bind_text(insertStmt.get(), 5, deadlineIso.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(insertStmt.get(), 6, seed.coins);
+        sqlite3_bind_int(insertStmt.get(), 7, seed.growth);
+        sqlite3_bind_text(insertStmt.get(), 8, seed.attributeReward.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(insertStmt.get(), 9, seed.forgiveness);
+        sqlite3_bind_int(insertStmt.get(), 10, seed.progressGoal);
+        rc = sqlite3_step(insertStmt.get());
+        if (!isSuccessCode(rc)) {
+            throw std::runtime_error(buildErrorMessage("Failed to seed default tasks", m_db.get()));
+        }
+    }
+}
+
+/**
+ * @brief 预置成就，确保画廊与奖励系统开箱即用。
+ * 中文：仅当当前用户没有任何成就记录时插入系统模板，避免重复。
+ */
+void DatabaseManager::seedDefaultAchievements() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    const std::string owner = kPreconfiguredUsername;
+    const std::string countSql = "SELECT COUNT(1) FROM achievements WHERE owner = ?";
+    auto countStmt = prepareStatement(countSql);
+    sqlite3_bind_text(countStmt.get(), 1, owner.c_str(), -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(countStmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to count achievements", m_db.get()));
+    }
+    if (sqlite3_column_int(countStmt.get(), 0) > 0) {
+        return;
+    }
+
+    auto serializeConditionsCompact = [](const std::vector<Achievement::Condition>& conditions) {
+        std::ostringstream stream;
+        bool first = true;
+        for (const auto& condition : conditions) {
+            if (!first) {
+                stream << ';';
+            }
+            first = false;
+            stream << static_cast<int>(condition.type) << ',' << condition.targetValue << ',' << condition.currentValue
+                   << ',' << condition.metadata;
+        }
+        return stream.str();
+    };
+
+    auto serializeAttributesCompact = [](const User::AttributeSet& set) {
+        std::ostringstream stream;
+        stream << set.execution << ',' << set.perseverance << ',' << set.decision << ',' << set.knowledge << ','
+               << set.social << ',' << set.pride;
+        return stream.str();
+    };
+
+    auto serializeItemsCompact = [](const std::vector<std::string>& items) {
+        std::ostringstream stream;
+        bool first = true;
+        for (const auto& item : items) {
+            if (!first) {
+                stream << '|';
+            }
+            first = false;
+            stream << item;
+        }
+        return stream.str();
+    };
+
+    struct AchievementSeed {
+        std::string name;
+        std::string description;
+        std::string iconPath;
+        std::string color;
+        Achievement::Type type = Achievement::Type::System;
+        Achievement::RewardType rewardType = Achievement::RewardType::WithReward;
+        Achievement::ProgressMode progressMode = Achievement::ProgressMode::Milestone;
+        std::vector<Achievement::Condition> conditions;
+        int rewardCoins = 0;
+        User::AttributeSet rewardAttributes;
+        std::vector<std::string> rewardItems;
+        std::string galleryGroup;
+    };
+
+    std::vector<AchievementSeed> seeds;
+
+    Achievement::Condition levelCond;
+    levelCond.type = Achievement::Condition::ConditionType::ReachLevel;
+    levelCond.targetValue = 3;
+    seeds.push_back({"初入兰大",
+                    "首次达到 3 级，证明已融入校园节奏",
+                    ":/icons/rookie.png",
+                    "#4CAF50",
+                    Achievement::Type::System,
+                    Achievement::RewardType::WithReward,
+                    Achievement::ProgressMode::Milestone,
+                    {levelCond},
+                    50,
+                    User::AttributeSet{0, 0, 0, 0, 0, 2},
+                    {},
+                    "新生礼遇"});
+
+    Achievement::Condition prideCond;
+    prideCond.type = Achievement::Condition::ConditionType::ReachPride;
+    prideCond.targetValue = 20;
+    seeds.push_back({"西北自豪",
+                    "自豪感达到 20，成为兰大形象大使",
+                    ":/icons/pride.png",
+                    "#FFC107",
+                    Achievement::Type::System,
+                    Achievement::RewardType::WithReward,
+                    Achievement::ProgressMode::Incremental,
+                    {prideCond},
+                    80,
+                    User::AttributeSet{0, 0, 0, 0, 0, 5},
+                    {"校史徽章"},
+                    "精神成长"});
+
+    Achievement::Condition weeklyCond;
+    weeklyCond.type = Achievement::Condition::ConditionType::CompleteTaskType;
+    weeklyCond.targetValue = 5;
+    weeklyCond.metadata = Task::typeToString(Task::TaskType::Weekly);
+    seeds.push_back({"周计划达人",
+                    "完成 5 个周任务",
+                    ":/icons/weekly.png",
+                    "#9C27B0",
+                    Achievement::Type::System,
+                    Achievement::RewardType::WithReward,
+                    Achievement::ProgressMode::Incremental,
+                    {weeklyCond},
+                    40,
+                    User::AttributeSet{1, 0, 0, 0, 0, 1},
+                    {},
+                    "勤奋实践"});
+
+    const std::string insertSql =
+        "INSERT INTO achievements (owner, creator, name, description, icon_path, display_color, type, reward_type, "
+        "progress_mode, progress_value, progress_goal, reward_coins, reward_attributes, reward_items, unlocked, "
+        "completion_time, conditions, gallery_group, created_at, special_metadata) "
+        "VALUES (?, 'system', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 0, '', ?, ?, ?, '')";
+
+    const auto createdAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate).toStdString();
+    for (const auto& seed : seeds) {
+        auto insertStmt = prepareStatement(insertSql);
+        sqlite3_bind_text(insertStmt.get(), 1, owner.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt.get(), 2, seed.name.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt.get(), 3, seed.description.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt.get(), 4, seed.iconPath.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt.get(), 5, seed.color.c_str(), -1, SQLITE_TRANSIENT);
+        const std::string typeText = seed.type == Achievement::Type::System ? "System" : "Custom";
+        sqlite3_bind_text(insertStmt.get(), 6, typeText.c_str(), -1, SQLITE_TRANSIENT);
+        const std::string rewardText =
+            seed.rewardType == Achievement::RewardType::WithReward ? "WithReward" : "NoReward";
+        sqlite3_bind_text(insertStmt.get(), 7, rewardText.c_str(), -1, SQLITE_TRANSIENT);
+        const std::string modeText = seed.progressMode == Achievement::ProgressMode::Incremental ? "Incremental"
+                                                                                              : "Milestone";
+        sqlite3_bind_text(insertStmt.get(), 8, modeText.c_str(), -1, SQLITE_TRANSIENT);
+        const int progressGoal = std::max(1, static_cast<int>(seed.conditions.size()) == 1
+                                                 ? seed.conditions.front().targetValue
+                                                 : std::accumulate(seed.conditions.begin(),
+                                                                   seed.conditions.end(),
+                                                                   0,
+                                                                   [](int acc, const Achievement::Condition& cond) {
+                                                                       return acc + cond.targetValue;
+                                                                   }));
+        sqlite3_bind_int(insertStmt.get(), 9, progressGoal);
+        sqlite3_bind_int(insertStmt.get(), 10, seed.rewardCoins);
+        const std::string attrText = serializeAttributesCompact(seed.rewardAttributes);
+        sqlite3_bind_text(insertStmt.get(), 11, attrText.c_str(), -1, SQLITE_TRANSIENT);
+        const std::string itemsText = serializeItemsCompact(seed.rewardItems);
+        sqlite3_bind_text(insertStmt.get(), 12, itemsText.c_str(), -1, SQLITE_TRANSIENT);
+        const std::string conditionText = serializeConditionsCompact(seed.conditions);
+        sqlite3_bind_text(insertStmt.get(), 13, conditionText.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt.get(), 14, seed.galleryGroup.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt.get(), 15, createdAt.c_str(), -1, SQLITE_TRANSIENT);
+
+        rc = sqlite3_step(insertStmt.get());
+        if (!isSuccessCode(rc)) {
+            throw std::runtime_error(buildErrorMessage("Failed to seed achievements", m_db.get()));
+        }
+    }
+}
+
+/**
+ * @brief 预置商城商品，方便学生体验购买与道具效果。
+ * 中文：插入物理商品、增益道具与幸运包三类示例，覆盖 ShopManager 的主要分支逻辑。
+ */
+void DatabaseManager::seedDefaultShopItems() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    const std::string countSql = "SELECT COUNT(1) FROM shop_items";
+    auto countStmt = prepareStatement(countSql);
+    int rc = sqlite3_step(countStmt.get());
+    if (!isSuccessCode(rc)) {
+        throw std::runtime_error(buildErrorMessage("Failed to count shop items", m_db.get()));
+    }
+    if (sqlite3_column_int(countStmt.get(), 0) > 0) {
+        return;
+    }
+
+    std::vector<ShopItem> seeds;
+
+    ShopItem merch;
+    merch.setName("校园周边礼包");
+    merch.setDescription("校徽 + 帆布袋套装，线下兑换纪念校园生活。");
+    merch.setIconPath(":/icons/merch.png");
+    merch.setItemType(ShopItem::ItemType::Physical);
+    merch.setPriceCoins(80);
+    merch.setPurchaseLimit(1);
+    merch.setAvailable(true);
+    merch.setPhysicalRedeemMethod("持购买截图到辅导员处登记领取");
+    merch.setPhysicalNotes("兑换时需核验学生证，仅限本人领取。");
+    seeds.push_back(merch);
+
+    ShopItem restCard;
+    restCard.setName("自习室休息日卡");
+    restCard.setDescription("为自己安排一天减压假，任务失败不计入连胜中断。");
+    restCard.setIconPath(":/icons/rest.png");
+    restCard.setItemType(ShopItem::ItemType::Prop);
+    restCard.setPriceCoins(30);
+    restCard.setPurchaseLimit(2);
+    restCard.setAvailable(true);
+    restCard.setPropEffectType(ShopItem::PropEffectType::RestDay);
+    restCard.setEffectDurationMinutes(1440);
+    restCard.setEffectDescription("使用后 24 小时内的单次任务失败将被忽略。");
+    restCard.setUsageConditions("当周有效，避免与宽恕券叠加使用。");
+    seeds.push_back(restCard);
+
+    ShopItem luckyBag;
+    luckyBag.setName("兰大幸运盲盒");
+    luckyBag.setDescription("随机掉落兰大币、成长值或额外道具，增添惊喜。");
+    luckyBag.setIconPath(":/icons/lucky.png");
+    luckyBag.setItemType(ShopItem::ItemType::LuckyBag);
+    luckyBag.setPriceCoins(45);
+    luckyBag.setPurchaseLimit(0);
+    luckyBag.setAvailable(true);
+    luckyBag.setLevelRequirement(1);
+    std::vector<ShopItem::LuckyBagReward> rewards;
+    ShopItem::LuckyBagReward rewardCoins;
+    rewardCoins.type = ShopItem::LuckyBagReward::RewardType::Coins;
+    rewardCoins.amount = 120;
+    rewardCoins.probability = 0.3;
+    rewardCoins.description = "120 兰大币";
+    rewards.push_back(rewardCoins);
+
+    ShopItem::LuckyBagReward rewardGrowth;
+    rewardGrowth.type = ShopItem::LuckyBagReward::RewardType::Growth;
+    rewardGrowth.amount = 40;
+    rewardGrowth.probability = 0.2;
+    rewardGrowth.description = "成长值 +40";
+    rewards.push_back(rewardGrowth);
+
+    ShopItem::LuckyBagReward rewardCoupon;
+    rewardCoupon.type = ShopItem::LuckyBagReward::RewardType::ShopItem;
+    rewardCoupon.referenceItemId = -1;
+    rewardCoupon.amount = 1;
+    rewardCoupon.probability = 0.5;
+    rewardCoupon.description = "额外获取一张自习室休息日卡";
+    rewards.push_back(rewardCoupon);
+    luckyBag.setLuckyRewards(rewards);
+    seeds.push_back(luckyBag);
+
+    for (auto& item : seeds) {
+        rc = insertShopItem(item.toRecord());
+        if (rc < 0) {
+            throw std::runtime_error(buildErrorMessage("Failed to seed shop items", m_db.get()));
+        }
+    }
 }
 
 /**

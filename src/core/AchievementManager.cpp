@@ -1,5 +1,6 @@
 #include "AchievementManager.h"
-
+#include "GrowthSystem.h"
+#include "GrowthSystemBridge.h"
 #include <QDate>
 
 #include <algorithm>
@@ -574,7 +575,9 @@ bool AchievementManager::recalculateProgress(Achievement& achievement) {
     return before != achievement.progressValue();
 }
 
-void AchievementManager::evaluateCompletion(Achievement& achievement) {
+// AchievementManager.cpp 中修改 evaluateCompletion 函数
+void AchievementManager::evaluateCompletion(Achievement& achievement)
+{
     if (achievement.unlocked()) {
         return;
     }
@@ -583,6 +586,21 @@ void AchievementManager::evaluateCompletion(Achievement& achievement) {
     }
     achievement.setUnlocked(true);
     achievement.setCompletedAt(QDateTime::currentDateTimeUtc());
+    
+    // 准备成就数据供成长系统使用
+    QJsonObject achievementData;
+    achievementData["name"] = achievement.name();
+    achievementData["rewardType"] = Achievement::rewardTypeToText(achievement.rewardType());
+    achievementData["rarity"] = 1; // 根据成就稀有度设置
+    achievementData["category"] = "general"; // 根据成就类型设置
+    achievementData["isMilestone"] = achievement.progressMode() == Achievement::ProgressMode::Milestone;
+    
+    // 通知成长系统成就解锁
+    if (m_growthSystem) {
+        m_growthSystem->onAchievementUnlocked(achievementData);
+    }
+    
+    // 原有奖励逻辑...
     grantRewards(achievement);
     m_database.updateAchievement(toRecord(achievement));
     emit achievementUnlocked(achievement.id());
